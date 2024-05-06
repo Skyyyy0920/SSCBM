@@ -5,7 +5,22 @@ device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
 
 def get_args():
-    parser = argparse.ArgumentParser(description="MTNet's args")
+    parser = argparse.ArgumentParser(description="Get basic configuration")
+
+    # Data
+    parser.add_argument('--dataset',
+                        type=str,
+                        default='CUB-200-2011',
+                        # default='TKY',
+                        # default='Gowalla-CA',
+                        help='Dataset name')
+
+    parser.add_argument('--config',
+                        '-c',
+                        # default='./configs/CUB-200-2011.yaml',
+                        default='./configs/mnist_add.yaml',
+                        help="YAML file with the configuration for the set of experiments to run.")
+
     # Operation environment
     parser.add_argument('--seed',
                         type=int,
@@ -15,13 +30,7 @@ def get_args():
                         type=str,
                         default=device,
                         help='Running on which device')
-    # Data
-    parser.add_argument('--dataset',
-                        type=str,
-                        default='NYC',
-                        # default='TKY',
-                        # default='Gowalla-CA',
-                        help='Dataset name')
+
 
     # Training hyper-parameters
     parser.add_argument('--batch_size',

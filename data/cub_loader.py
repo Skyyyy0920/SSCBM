@@ -9,26 +9,15 @@ from collections import defaultdict
 from PIL import Image
 from torch.utils.data import Dataset, DataLoader
 
-########################################################
-## GENERAL DATASET GLOBAL VARIABLES
-########################################################
-
+# ====================================
+# GENERAL DATASET GLOBAL VARIABLES
+# ====================================
 N_CLASSES = 200
 
-# IMPORANT NOTE: THIS DATASET NEEDS TO BE DOWNLOADED FIRST BEFORE BEING ABLE
-#                TO RUN ANY CUB EXPERIMENTS!!
-#                Instructions on how to download it can be found
-#                in the original CBM paper's repository
-#                found here: https://github.com/yewsiang/ConceptBottleneck
-# CAN BE OVERWRITTEN WITH AN ENV VARIABLE DATASET_DIR
-DATASET_DIR = os.environ.get("DATASET_DIR", 'cem/data/CUB200/')
-
-#########################################################
-## CONCEPT INFORMATION REGARDING CUB
-#########################################################
-
+# ====================================
+# CONCEPT INFORMATION REGARDING CUB
+# ====================================
 # CUB Class names
-
 CLASS_NAMES = [
     "Black_footed_Albatross",
     "Laysan_Albatross",
@@ -673,14 +662,13 @@ for i, concept_name in enumerate(list(
     CONCEPT_GROUP_MAP[group].append(i)
 
 
-##########################################################
-## ORIGINAL SAMPLER/CLASSES FROM CBM PAPER
-##########################################################
-
+# ========================================
+# ORIGINAL SAMPLER/CLASSES FROM CBM PAPER
+# ========================================
 class Sampler(object):
     """Base class for all Samplers.
     Every Sampler subclass has to provide an __iter__ method, providing a way
-    to iterate over indices of dataset elements, and a __len__ method that
+    to iterate over indices of data elements, and a __len__ method that
     returns the length of the returned iterators.
     """
 
@@ -712,12 +700,7 @@ class StratifiedSampler(Sampler):
         self.class_vector = class_vector
 
     def gen_sample_array(self):
-        try:
-            from sklearn.model_selection import StratifiedShuffleSplit
-        except:
-            print('Need scikit-learn for this functionality')
-        import numpy as np
-
+        from sklearn.model_selection import StratifiedShuffleSplit
         s = StratifiedShuffleSplit(n_splits=self.n_splits, test_size=0.5)
         X = torch.randn(self.class_vector.size(0), 2).numpy()
         y = self.class_vector.numpy()
@@ -735,7 +718,7 @@ class StratifiedSampler(Sampler):
 
 class CUBDataset(Dataset):
     """
-    Returns a compatible Torch Dataset object customized for the CUB dataset
+    Returns a compatible Torch Dataset object customized for the CUB data
     """
 
     def __init__(self, pkl_file_paths, use_attr, no_img, uncertain_label, image_dir, n_class_attr,
@@ -767,7 +750,6 @@ class CUBDataset(Dataset):
         self.image_dir = image_dir
         self.n_class_attr = n_class_attr
         self.root_dir = root_dir
-        self.root_dir = '../cem/data/CUB200/'
         self.path_transform = path_transform
 
     def __len__(self):
@@ -776,34 +758,31 @@ class CUBDataset(Dataset):
     def __getitem__(self, idx):
         img_data = self.data[idx]
         img_path = img_data['img_path']
-        if self.path_transform == None:
+        if self.path_transform is None:
             img_path = img_path.replace(
                 '/juice/scr/scr102/scr/thaonguyen/CUB_supervision/datasets/',
-                '../data/CUB200/'
+                './data/CUB_200_2011/'
             )
-            # Trim unnecessary paths
-            try:
-                idx = img_path.split('/').index('CUB_200_2011')
-                # if self.image_dir != 'images':
-                #     img_path = '/'.join([self.image_dir] + img_path.split('/')[idx+1:])
-                #     img_path = img_path.replace('images/', '')
-                # else:
-                # img_path = self.root_dir + '/' + '/'.join(img_path.split('/')[idx:])
-                img_path = self.root_dir + '/'.join(img_path.split('/')[idx:])
-                img = None
-                for _ in range(5):
-                    try:
-                        img = Image.open(img_path).convert('RGB')
-                        break
-                    except:
-                        pass
-                if img is None:
-                    raise ValueError(f"Failed to fetch {img_path} after 5 trials!")
-            except:
-                img_path_split = img_path.split('/')
-                split = 'train' if self.is_train else 'test'
-                img_path = '/'.join(img_path_split[:2] + [split] + img_path_split[2:])
-                img = Image.open(img_path).convert('RGB')
+            img = Image.open(img_path).convert('RGB')
+            # try:
+            #     idx = img_path.split('/').index('CUB_200_2011')
+            #     # if self.image_dir != 'images':
+            #     #     img_path = '/'.join([self.image_dir] + img_path.split('/')[idx+1:])
+            #     #     img_path = img_path.replace('images/', '')
+            #     # else:
+            #     # img_path = self.root_dir + '/' + '/'.join(img_path.split('/')[idx:])
+            #     img_path = self.root_dir + '/'.join(img_path.split('/')[idx:])
+            #
+            #     try:
+            #         img = Image.open(img_path).convert('RGB')
+            #     except:
+            #         raise ValueError(f"Failed to fetch {img_path}!")
+            #
+            # except:
+            #     img_path_split = img_path.split('/')
+            #     split = 'train' if self.is_train else 'test'
+            #     img_path = '/'.join(img_path_split[:2] + [split] + img_path_split[2:])
+            #     img = Image.open(img_path).convert('RGB')
         else:
             img_path = self.path_transform(img_path)
             img = Image.open(img_path).convert('RGB')
@@ -838,7 +817,7 @@ class CUBDataset(Dataset):
 
 class ImbalancedDatasetSampler(torch.utils.data.sampler.Sampler):
     """Samples elements randomly from a given list of indices for
-    imbalanced dataset
+    imbalanced data
     Arguments:
         indices (list, optional): a list of indices
         num_samples (int, optional): number of samples to draw
@@ -846,7 +825,7 @@ class ImbalancedDatasetSampler(torch.utils.data.sampler.Sampler):
 
     def __init__(self, dataset, indices=None):
         # if indices is not provided,
-        # all elements in the dataset will be considered
+        # all elements in the data will be considered
         self.indices = list(range(len(dataset))) \
             if indices is None else indices
 
@@ -854,7 +833,7 @@ class ImbalancedDatasetSampler(torch.utils.data.sampler.Sampler):
         # draw `len(indices)` samples in each iteration
         self.num_samples = len(self.indices)
 
-        # distribution of classes in the dataset
+        # distribution of classes in the data
         label_to_count = {}
         for idx in self.indices:
             label = self._get_label(dataset, idx)
@@ -868,7 +847,7 @@ class ImbalancedDatasetSampler(torch.utils.data.sampler.Sampler):
                    for idx in self.indices]
         self.weights = torch.DoubleTensor(weights)
 
-    def _get_label(self, dataset, idx):  # Note: for single attribute dataset
+    def _get_label(self, dataset, idx):  # Note: for single attribute data
         return dataset.data[idx]['attribute_label'][0]
 
     def __iter__(self):
@@ -967,7 +946,8 @@ def find_class_imbalance(pkl_file, multiple_attr=False, attr_idx=-1):
     """
     Calculate class imbalance ratio for binary attribute labels stored in pkl_file
     If attr_idx >= 0, then only return ratio for the corresponding attribute id
-    If multiple_attr is True, then return imbalance ratio separately for each attribute. Else, calculate the overall imbalance across all attributes
+    If multiple_attr is True, then return imbalance ratio separately for each attribute.
+    Else, calculate the overall imbalance across all attributes
     """
     imbalance_ratio = []
     with open(pkl_file, 'rb') as f:
@@ -999,22 +979,15 @@ def find_class_imbalance(pkl_file, multiple_attr=False, attr_idx=-1):
     return imbalance_ratio
 
 
-##########################################################
-## SIMPLIFIED LOADER FUNCTION FOR STANDARDIZATION
-##########################################################
-
-
-def generate_data(
-        config,
-        root_dir=DATASET_DIR,
-        seed=42,
-        output_dataset_vars=False,
-        rerun=False,
-):
-    if root_dir is None:
-        root_dir = DATASET_DIR
+# ================================================
+# SIMPLIFIED LOADER FUNCTION FOR STANDARDIZATION
+# ================================================
+def generate_data(config,
+                  seed=42,
+                  output_dataset_vars=False,
+                  rerun=False):
+    root_dir = config['root_dir']
     base_dir = os.path.join(root_dir, 'class_attr_data_10')
-    base_dir = os.path.join('../cem/', base_dir)  # TODO
     seed_everything(seed)
     train_data_path = os.path.join(base_dir, 'train.pkl')
     if config.get('weight_loss', False):
@@ -1022,19 +995,20 @@ def generate_data(
     else:
         imbalance = None
 
-    val_data_path = train_data_path.replace('train.pkl', 'val.pkl')
-    test_data_path = train_data_path.replace('train.pkl', 'test.pkl')
+    val_data_path = os.path.join(base_dir, 'val.pkl')
+    test_data_path = os.path.join(base_dir, 'test.pkl')
     sampling_percent = config.get("sampling_percent", 1)
     sampling_groups = config.get("sampling_groups", False)
 
     concept_group_map = CONCEPT_GROUP_MAP.copy()
+    print(f"concept_group_map: {concept_group_map}")
     n_concepts = len(SELECTED_CONCEPTS)
     if sampling_percent != 1:
         # Do the subsampling
         if sampling_groups:
             new_n_groups = int(np.ceil(len(concept_group_map) * sampling_percent))
             selected_groups_file = os.path.join(
-                DATASET_DIR,
+                root_dir,
                 f"selected_groups_sampling_{sampling_percent}.npy",
             )
             if (not rerun) and os.path.exists(selected_groups_file):
@@ -1052,7 +1026,7 @@ def generate_data(
         else:
             new_n_concepts = int(np.ceil(n_concepts * sampling_percent))
             selected_concepts_file = os.path.join(
-                DATASET_DIR,
+                root_dir,
                 f"selected_concepts_sampling_{sampling_percent}.npy",
             )
             if (not rerun) and os.path.exists(selected_concepts_file):
@@ -1063,8 +1037,7 @@ def generate_data(
                 )
                 np.save(selected_concepts_file, selected_concepts)
         # Then we also have to update the concept group map so that
-        # selected concepts that were previously in the same concept
-        # group are maintained in the same concept group
+        # selected concepts that were previously in the same concept group are maintained in the same concept group
         new_concept_group = {}
         remap = dict((y, x) for (x, y) in enumerate(selected_concepts))
         selected_concepts_set = set(selected_concepts)
@@ -1144,10 +1117,4 @@ def generate_data(
     )
     if not output_dataset_vars:
         return train_dl, val_dl, test_dl, imbalance
-    return (
-        train_dl,
-        val_dl,
-        test_dl,
-        imbalance,
-        (n_concepts, N_CLASSES, concept_group_map),
-    )
+    return train_dl, val_dl, test_dl, imbalance, (n_concepts, N_CLASSES, concept_group_map)
