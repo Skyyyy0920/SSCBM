@@ -764,25 +764,6 @@ class CUBDataset(Dataset):
                 './data/CUB_200_2011/'
             )
             img = Image.open(img_path).convert('RGB')
-            # try:
-            #     idx = img_path.split('/').index('CUB_200_2011')
-            #     # if self.image_dir != 'images':
-            #     #     img_path = '/'.join([self.image_dir] + img_path.split('/')[idx+1:])
-            #     #     img_path = img_path.replace('images/', '')
-            #     # else:
-            #     # img_path = self.root_dir + '/' + '/'.join(img_path.split('/')[idx:])
-            #     img_path = self.root_dir + '/'.join(img_path.split('/')[idx:])
-            #
-            #     try:
-            #         img = Image.open(img_path).convert('RGB')
-            #     except:
-            #         raise ValueError(f"Failed to fetch {img_path}!")
-            #
-            # except:
-            #     img_path_split = img_path.split('/')
-            #     split = 'train' if self.is_train else 'test'
-            #     img_path = '/'.join(img_path_split[:2] + [split] + img_path_split[2:])
-            #     img = Image.open(img_path).convert('RGB')
         else:
             img_path = self.path_transform(img_path)
             img = Image.open(img_path).convert('RGB')
@@ -982,10 +963,12 @@ def find_class_imbalance(pkl_file, multiple_attr=False, attr_idx=-1):
 # ================================================
 # SIMPLIFIED LOADER FUNCTION FOR STANDARDIZATION
 # ================================================
-def generate_data(config,
-                  seed=42,
-                  output_dataset_vars=False,
-                  rerun=False):
+def generate_data(
+        config,
+        seed=42,
+        output_dataset_vars=False,
+        rerun=False
+):
     root_dir = config['root_dir']
     base_dir = os.path.join(root_dir, 'class_attr_data_10')
     seed_everything(seed)
@@ -1003,8 +986,10 @@ def generate_data(config,
     concept_group_map = CONCEPT_GROUP_MAP.copy()
     print(f"concept_group_map: {concept_group_map}")
     n_concepts = len(SELECTED_CONCEPTS)
+
     if sampling_percent != 1:
         # Do the subsampling
+        print("DO the subsampling")
         if sampling_groups:
             new_n_groups = int(np.ceil(len(concept_group_map) * sampling_percent))
             selected_groups_file = os.path.join(

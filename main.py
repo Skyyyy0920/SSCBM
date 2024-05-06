@@ -4,6 +4,9 @@ import zipfile
 from utils import *
 from config.basic_config import *
 import data.cub_loader as cub_data_module
+import data.mnist_loader as mnist_data_module
+import data.celeba_loader as celeba_data_module
+from data.synthetic_loader import get_synthetic_data, get_synthetic_num_features
 
 if __name__ == '__main__':
     # ==================================================================================================
@@ -39,6 +42,12 @@ if __name__ == '__main__':
     dataset_config = experiment_config['dataset_config']
     if args.dataset == "CUB-200-2011":
         data_module = cub_data_module
+    elif args.dataset == "CelebA":
+        data_module = celeba_data_module
+    elif args.dataset == "MNIST":
+        data_module = mnist_data_module
+    elif args.dataset in ["XOR", "vector", "Dot", "Trigonometric"]:
+        data_module = get_synthetic_data(dataset_config["dataset"])
     else:
         raise ValueError(f"Unsupported dataset {dataset_config['dataset']}!")
 
@@ -54,6 +63,7 @@ if __name__ == '__main__':
 
     import pytorch_lightning as pl
     from cem.models.cem import ConceptEmbeddingModel
+
     cem_model = ConceptEmbeddingModel(
         n_concepts=n_concepts,  # Number of training-time concepts
         n_tasks=n_tasks,  # Number of output labels

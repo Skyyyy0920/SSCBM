@@ -10,16 +10,14 @@ def get_args():
     # Data
     parser.add_argument('--dataset',
                         type=str,
-                        default='CUB-200-2011',
-                        # default='TKY',
-                        # default='Gowalla-CA',
+                        # default='CUB-200-2011',
+                        # default='CelebA',
+                        default='MNIST',
+                        # default='XOR',
+                        # default='Dot',
+                        # default='Trigonometric',
+                        # default='vector',
                         help='Dataset name')
-
-    parser.add_argument('--config',
-                        '-c',
-                        # default='./configs/CUB-200-2011.yaml',
-                        default='./configs/mnist_add.yaml',
-                        help="YAML file with the configuration for the set of experiments to run.")
 
     # Operation environment
     parser.add_argument('--seed',
@@ -30,7 +28,6 @@ def get_args():
                         type=str,
                         default=device,
                         help='Running on which device')
-
 
     # Training hyper-parameters
     parser.add_argument('--batch_size',

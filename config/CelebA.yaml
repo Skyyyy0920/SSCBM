@@ -1,19 +1,29 @@
 trials: 5
-results_dir: results/cub/
-
+results_dir: results/celeba/
+model_selection_groups:
+  - [ "^CEM", "CEM" ]
+  - [ "^IntCEM(.*)", "IntCEM" ]
+  - [ "^CBM_Sigmoid", "CBM_Logit" ]
+  - [ "^CBM_Ind", "CBM_Seq" ]
+model_selection_metrics: [ val_acc_y ]
 
 # Dataset Configuration
 dataset_config:
-  dataset: "CUB-200-2011"
-  num_workers: 0
-  batch_size: 256
+  dataset: "celeba"
+  image_size: 64
+  num_classes: 1000
+  batch_size: 512
+  root_dir: data/
+  use_imbalance: True
+  use_binary_vector_class: True
+  num_concepts: 6
+  label_binary_width: 1
+  label_dataset_subsample: 12
+  num_hidden_concepts: 2
+  selected_concepts: False
+  num_workers: 8
 
-  # DATASET VARIABLES
-  root_dir: ./data/CUB_200_2011
-  sampling_percent: 1
-  test_subsampling: 1
-  weight_loss: True
-
+# Intervention Parameters
 intervention_config:
   competence_levels: [ 1, 0 ]
   intervention_freq: 1
@@ -40,21 +50,21 @@ intervention_config:
     - policy: "global_val_improvement"
       group_level: True
       use_prior: False
+
 # Representation metrics
 # Change to False if you want representation metrics to be included in the
 # evaluation (may significantly increase experiment times)
 skip_repr_evaluation: True
-
-max_epochs: 300
-top_k_accuracy: null
+top_k_accuracy: [ 3, 5, 10 ]
 save_model: True
+max_epochs: 200
 patience: 15
 emb_size: 16
 extra_dims: 0
-concept_loss_weight: 5
-learning_rate: 0.01
+concept_loss_weight: 1
+learning_rate: 0.005
 weight_decay: 0.000004
-weight_loss: True
+weight_loss: False
 c_extractor_arch: resnet34
 optimizer: sgd
 bool: False
@@ -64,6 +74,7 @@ early_stopping_delta: 0.0
 momentum: 0.9
 sigmoidal_prob: False
 training_intervention_prob: 0.25
+
 
 runs:
   - architecture: 'ConceptEmbeddingModel'

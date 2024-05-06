@@ -1,19 +1,18 @@
 trials: 5
-results_dir: results/cub/
+results_dir: results/dot/
 
 
 # Dataset Configuration
 dataset_config:
-  dataset: "CUB-200-2011"
-  num_workers: 0
+  dataset: dot
+  dataset_size: 3000
   batch_size: 256
-
-  # DATASET VARIABLES
-  root_dir: ./data/CUB_200_2011
+  num_workers: 8
+  root_dir: data/
   sampling_percent: 1
   test_subsampling: 1
-  weight_loss: True
 
+# Intervention evaluation
 intervention_config:
   competence_levels: [ 1, 0 ]
   intervention_freq: 1
@@ -21,49 +20,32 @@ intervention_config:
   intervention_policies:
     - policy: "random"
       group_level: True
-      use_prior: True  # This will make the random policy use the learnt IntCEM prior!!!
-    - policy: "random"
-      group_level: True
-      use_prior: False
-    - policy: "coop"
-      group_level: True
-      use_prior: False
-    - policy: "behavioural_cloning"
-      group_level: True
-      use_prior: False
-    - policy: "optimal_greedy"
-      group_level: True
-      use_prior: False
-    - policy: "global_val_error"
-      group_level: True
-      use_prior: False
-    - policy: "global_val_improvement"
-      group_level: True
       use_prior: False
 # Representation metrics
 # Change to False if you want representation metrics to be included in the
 # evaluation (may significantly increase experiment times)
 skip_repr_evaluation: True
-
-max_epochs: 300
 top_k_accuracy: null
 save_model: True
 patience: 15
-emb_size: 16
+emb_size: 128
 extra_dims: 0
-concept_loss_weight: 5
+concept_loss_weight: 1
 learning_rate: 0.01
-weight_decay: 0.000004
-weight_loss: True
-c_extractor_arch: resnet34
-optimizer: sgd
+scheduler_step: 20
+weight_decay: 0
+weight_loss: False
+c_extractor_arch: synth_extractor
+max_epochs: 500
+optimizer: adam
 bool: False
 early_stopping_monitor: val_loss
 early_stopping_mode: min
 early_stopping_delta: 0.0
+check_val_every_n_epoch: 30
+linear_c2y: True
 momentum: 0.9
 sigmoidal_prob: False
-training_intervention_prob: 0.25
 
 runs:
   - architecture: 'ConceptEmbeddingModel'
@@ -72,30 +54,16 @@ runs:
     training_intervention_prob: 0.25
     embedding_activation: "leakyrelu"
 
-  - architecture: "IntAwareConceptEmbeddingModel"
-    run_name: "IntCEM_intervention_weight_{intervention_weight}_intervention_task_discount_{intervention_task_discount}"
-    training_intervention_prob: 0.25
-    intervention_weight: [ 0.1, 1, 5 ]
-    intervention_task_discount: [ 1.1, 1.5 ]
-    use_concept_groups: True
-    int_model_use_bn: True
-    int_model_layers: [ 128, 128, 64, 64 ]
-    embedding_activation: "leakyrelu"
-    max_horizon: 6
-    horizon_rate: 1.005
-    gradient_clip_val: 100
-    grid_variables:
-      - intervention_task_discount
-      - intervention_weight
-    grid_search_mode: exhaustive
+  - architecture: 'ConceptBottleneckModel'
+    run_name: "CBM_Bool"
+    bool: True
+    extra_dims: 0
+    sigmoidal_prob: True
 
   - architecture: 'ConceptBottleneckModel'
     run_name: "CBM_Sigmoid"
-    training_intervention_prob: 0.25
-    embedding_activation: "leakyrelu"
     bool: False
     extra_dims: 0
-    sigmoidal_extra_capacity: False
     sigmoidal_prob: True
 
   - architecture: 'ConceptBottleneckModel'
@@ -103,6 +71,21 @@ runs:
     embedding_activation: "leakyrelu"
     bool: False
     extra_dims: 0
+    sigmoidal_prob: False
+
+  - architecture: 'ConceptBottleneckModel'
+    run_name: "CBM_Hybrid_Sigmoid"
+    bool: False
+    extra_dims: "{{({emb_size} - 1) * {n_concepts}}}"
+    bottleneck_nonlinear: "leakyrelu"
+    sigmoidal_extra_capacity: False
+    sigmoidal_prob: True
+
+  - architecture: 'ConceptBottleneckModel'
+    run_name: "CBM_Hybrid_Logit"
+    bool: False
+    extra_dims: "{{({emb_size} - 1) * {n_concepts}}}"
+    bottleneck_nonlinear: "leakyrelu"
     sigmoidal_extra_capacity: False
     sigmoidal_prob: False
 
@@ -121,3 +104,12 @@ runs:
     extra_dims: 0
     sigmoidal_extra_capacity: False
     sigmoidal_prob: True
+
+  - architecture: 'ConceptBottleneckModel'
+    run_name: "DNN"
+    bool: False
+    extra_dims: "{{({emb_size} - 1) * {n_concepts}}}"
+    bottleneck_nonlinear: "leakyrelu"
+    sigmoidal_extra_capacity: False
+    sigmoidal_prob: False
+    concept_loss_weight: 0
