@@ -2,11 +2,12 @@ import yaml
 import time
 import zipfile
 from utils import *
+from train.training import *
 from config.basic_config import *
 import data.cub_loader as cub_data_module
 import data.mnist_loader as mnist_data_module
 import data.celeba_loader as celeba_data_module
-from data.synthetic_loader import get_synthetic_data, get_synthetic_num_features
+from data.synthetic_loader import get_synthetic_data, get_synthetic_num_features, get_synthetic_extractor_arch
 
 if __name__ == '__main__':
     # ==================================================================================================
@@ -14,7 +15,6 @@ if __name__ == '__main__':
     # ==================================================================================================
     print('\n' + '=' * 36 + ' Get experiment configuration ' + '=' * 36)
     args = get_args()
-    # setup_seed(args.seed)  # make the experiment repeatable
     logging_time = time.strftime('%H-%M', time.localtime())
     save_dir = os.path.join(args.save_path, f"{args.dataset}_{logging_time}")
     logging_config(save_dir)
@@ -51,15 +51,76 @@ if __name__ == '__main__':
     else:
         raise ValueError(f"Unsupported dataset {dataset_config['dataset']}!")
 
+    if experiment_config['c_extractor_arch'] == "mnist_extractor":
+        num_operands = dataset_config.get('num_operands', 32)
+        experiment_config["c_extractor_arch"] = mnist_data_module.get_mnist_extractor_arch(
+            input_shape=(dataset_config.get('batch_size', 512),
+                         num_operands,
+                         28,
+                         28),
+            num_operands=num_operands,
+        )
+    elif experiment_config['c_extractor_arch'] == 'synth_extractor':
+        input_features = get_synthetic_num_features(dataset_config["dataset"])
+        experiment_config["c_extractor_arch"] = get_synthetic_extractor_arch(input_features)
+
     train_dl, val_dl, test_dl, imbalance, (n_concepts, n_tasks, concept_map) = data_module.generate_data(
         config=dataset_config,
         seed=42,
         output_dataset_vars=True)
 
+    task_class_weights = update_config_with_dataset(
+        config=experiment_config,
+        train_dl=train_dl,
+        n_concepts=n_concepts,
+        n_tasks=n_tasks,
+        concept_map=concept_map,
+    )
+
     # ==================================================================================================
     # 5. Build models, define overall loss and optimizer
     # ==================================================================================================
     print('\n' + '=' * 36 + ' Build models ' + '=' * 36)
+
+    model, model_results = train_end_to_end_model(
+        run_name=run_name,
+        task_class_weights=task_class_weights,
+        accelerator=args.device,
+        devices=devices,
+        n_concepts=run_config['n_concepts'],
+        n_tasks=run_config['n_tasks'],
+        config=run_config,
+        train_dl=train_dl,
+        val_dl=val_dl,
+        test_dl=test_dl,
+        split=split,
+        result_dir=result_dir,
+        rerun=current_rerun,
+        project_name=project_name,
+        seed=(42 + split),
+        imbalance=imbalance,
+        old_results=old_results,
+        gradient_clip_val=run_config.get(
+            'gradient_clip_val',
+            0,
+        ),
+        single_frequency_epochs=single_frequency_epochs,
+        activation_freq=activation_freq,
+    )
+    training.update_statistics(
+        aggregate_results=results[f'{split}'][run_name],
+        run_config=run_config,
+        model=model,
+        test_results=model_results,
+        run_name=run_name,
+        prefix="",
+    )
+    results[f'{split}'][run_name][f'num_trainable_params'] = sum(
+        p.numel() for p in model.parameters() if p.requires_grad
+    )
+    results[f'{split}'][run_name][f'num_non_trainable_params'] = sum(
+        p.numel() for p in model.parameters() if not p.requires_grad
+    )
 
     import pytorch_lightning as pl
     from cem.models.cem import ConceptEmbeddingModel
@@ -79,7 +140,7 @@ if __name__ == '__main__':
     #####
 
     trainer = pl.Trainer(
-        accelerator="gpu",  # or "cpu" if no GPU available
+        accelerator="gpu",
         devices="auto",
         max_epochs=100,
         check_val_every_n_epoch=5,

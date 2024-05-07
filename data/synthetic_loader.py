@@ -134,13 +134,8 @@ class SyntheticGenerator(object):
             if not output_dataset_vars:
                 return train_dl, val_dl, test_dl, imbalance
             concept_group_map = dict([(i, [i]) for i in range(num_concepts)])
-            return (
-                train_dl,
-                val_dl,
-                test_dl,
-                imbalance,
-                (num_concepts, n_tasks, concept_group_map),
-            )
+
+            return train_dl, val_dl, test_dl, imbalance, (num_concepts, n_tasks, concept_group_map),
 
         self.generate_data = _data_loader
 
@@ -154,6 +149,21 @@ def get_synthetic_num_features(dataset_name):
     elif dataset_name_lower in ["vector", "dot"]:
         return 4
     raise ValueError(f"Unsupported dataset name {dataset_name}")
+
+
+def get_synthetic_extractor_arch(input_features):
+    def c_extractor_arch(output_dim):
+        if output_dim is None:
+            output_dim = 128
+        return torch.nn.Sequential(*[
+            torch.nn.Linear(input_features, 128),
+            torch.nn.LeakyReLU(),
+            torch.nn.Linear(128, 128),
+            torch.nn.LeakyReLU(),
+            torch.nn.Linear(128, output_dim),
+        ])
+
+    return c_extractor_arch
 
 
 def get_synthetic_data(dataset_name):

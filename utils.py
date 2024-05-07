@@ -2,19 +2,11 @@ import os
 import re
 import glob
 import torch
-import random
 import logging
 import numpy as np
 from pathlib import Path
 
 os.environ["CUDA_VISIBLE_DEVICES"] = "0"
-
-
-def setup_seed(seed):
-    random.seed(seed)
-    np.random.seed(seed)
-    torch.manual_seed(seed)
-    torch.cuda.manual_seed_all(seed)
 
 
 def zipdir(path, zipf, include_format):
@@ -53,3 +45,42 @@ def increment_path(path, exist_ok=True, sep=''):
         i = [int(m.groups()[0]) for m in matches if m]  # indices
         n = max(i) + 1 if i else 2  # increment number
         return f"{path}{sep}{n}"  # update path
+
+
+def update_config_with_dataset(
+        config,
+        train_dl,
+        n_concepts,
+        n_tasks,
+        concept_map,
+):
+    config["n_concepts"] = n_concepts
+    config["n_tasks"] = n_tasks
+    config["concept_map"] = concept_map
+
+    task_class_weights = None
+
+    if config.get('use_task_class_weights', False):
+        logging.info(f"Computing task class weights in the training dataset with size {len(train_dl)}...")
+        attribute_count = np.zeros((max(n_tasks, 2),))
+        samples_seen = 0
+        for i, data in enumerate(train_dl):
+            if len(data) == 2:
+                (_, (y, _)) = data
+            else:
+                (_, y, _) = data
+            if n_tasks > 1:
+                y = torch.nn.functional.one_hot(y, num_classes=n_tasks).cpu().detach().numpy()
+            else:
+                y = torch.cat(
+                    [torch.unsqueeze(1 - y, dim=-1), torch.unsqueeze(y, dim=-1)],
+                    dim=-1).cpu().detach().numpy()
+            attribute_count += np.sum(y, axis=0)
+            samples_seen += y.shape[0]
+        logging.info(f"Class distribution is: {attribute_count / samples_seen}")
+        if n_tasks > 1:
+            task_class_weights = samples_seen / attribute_count - 1
+        else:
+            task_class_weights = np.array([attribute_count[0] / attribute_count[1]])
+
+    return task_class_weights

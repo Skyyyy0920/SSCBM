@@ -599,3 +599,50 @@ def generate_data(
     if not output_dataset_vars:
         return train_dl, val_dl, test_dl, imbalance
     return train_dl, val_dl, test_dl, imbalance, (num_concepts, n_tasks, concept_group_map)
+
+
+def get_mnist_extractor_arch(input_shape, num_operands):
+    def c_extractor_arch(output_dim):
+        intermediate_maps = 16
+        output_dim = output_dim or 128
+        return torch.nn.Sequential(*[
+            torch.nn.Conv2d(
+                in_channels=num_operands,
+                out_channels=intermediate_maps,
+                kernel_size=(3, 3),
+                padding='same',
+            ),
+            torch.nn.BatchNorm2d(num_features=intermediate_maps),
+            torch.nn.LeakyReLU(),
+            torch.nn.Conv2d(
+                in_channels=intermediate_maps,
+                out_channels=intermediate_maps,
+                kernel_size=(3, 3),
+                padding='same',
+            ),
+            torch.nn.BatchNorm2d(num_features=intermediate_maps),
+            torch.nn.LeakyReLU(),
+            torch.nn.Conv2d(
+                in_channels=intermediate_maps,
+                out_channels=intermediate_maps,
+                kernel_size=(3, 3),
+                padding='same',
+            ),
+            torch.nn.BatchNorm2d(num_features=intermediate_maps),
+            torch.nn.LeakyReLU(),
+            torch.nn.Conv2d(
+                in_channels=intermediate_maps,
+                out_channels=intermediate_maps,
+                kernel_size=(3, 3),
+                padding='same',
+            ),
+            torch.nn.BatchNorm2d(num_features=intermediate_maps),
+            torch.nn.LeakyReLU(),
+            torch.nn.Flatten(),
+            torch.nn.Linear(
+                int(np.prod(input_shape[2:])) * intermediate_maps,
+                output_dim,
+            ),
+        ])
+
+    return c_extractor_arch
