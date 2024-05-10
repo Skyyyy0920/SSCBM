@@ -90,17 +90,17 @@ def update_config_with_dataset(
 
 def generate_hyper_param_configs(config):
     if "grid_variables" not in config:
-        # Then nothing to see here so we will return a singleton set with this config in it
+        # Then nothing to see here, so we will return a singleton set with this config in it
         return [config]
     # Else time to do some hyperparameter search in here!
     vars = config["grid_variables"]
     options = []
     for var in vars:
         if var not in config:
-            raise ValueError(f'All variable names in "grid_variables" must be exhisting '
+            raise ValueError(f'All variable names in "grid_variables" must be existing '
                              f'fields in the config. However, we could not find any field with name "{var}".')
         if not isinstance(config[var], list):
-            raise ValueError(f'If we are doing a hyperparamter search over variable "{var}", '
+            raise ValueError(f'If we are doing a hyper-paramter search over variable "{var}", '
                              f'we expect it to be a list of values. Instead we got {config[var]}.')
         options.append(config[var])
     mode = config.get('grid_search_mode', "exhaustive").lower().strip()

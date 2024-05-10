@@ -4,7 +4,7 @@ from collections import defaultdict
 
 from utils import *
 from train.training import *
-from config.basic_config import *
+from configs.basic_config import *
 import data.cub_loader as cub_data_module
 import data.mnist_loader as mnist_data_module
 import data.celeba_loader as celeba_data_module
@@ -20,7 +20,7 @@ if __name__ == '__main__':
     logging_config(save_dir)
     logging.info(f"args: {args}")
     logging.info(f"Saving path: {save_dir}")
-    with open(f"./config/{args.dataset}.yaml", "r") as f:
+    with open(f"configs/{args.dataset}.yaml", "r") as f:
         experiment_config = yaml.load(f, Loader=yaml.FullLoader)
 
     # ==================================================================================================

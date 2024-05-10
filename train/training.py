@@ -10,7 +10,7 @@ from pytorch_lightning import seed_everything
 from pytorch_lightning.callbacks.early_stopping import EarlyStopping
 
 import cem.train.utils as utils
-from cem.models.construction import construct_model
+from models.construction import construct_model
 
 
 def _evaluate_cbm(
@@ -149,8 +149,6 @@ def train_end_to_end_model(
         enable_checkpointing=enable_checkpointing,
         gradient_clip_val=gradient_clip_val,
     )
-
-    print(trainer.max_epochs, "**********************************************\n***************************************")
 
     if result_dir:
         if activation_freq:

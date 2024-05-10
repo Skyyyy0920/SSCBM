@@ -300,7 +300,7 @@ def generate_data(
             target_transform=lambda x: [
                 torch.tensor(
                     # If it is not in our map, then we make it be the token
-                    # label config['num_classes'] which will be removed
+                    # label configs['num_classes'] which will be removed
                     # afterwards
                     label_remap.get(
                         x[0].cpu().detach().item() - 1,
