@@ -1,11 +1,16 @@
 import torch
 import argparse
 
-device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+device = 'gpu' if torch.cuda.is_available() else 'cpu'
 
 
 def get_args():
     parser = argparse.ArgumentParser(description="Get basic configuration")
+
+    parser.add_argument('--project_name',
+                        type=str,
+                        default='test',
+                        help="Project name used for Weights & Biases monitoring.")
 
     # Data
     parser.add_argument('--dataset',
@@ -56,10 +61,6 @@ def get_args():
                         help='the patience for early stopping')
 
     # Experiment configuration
-    parser.add_argument('--workers',
-                        type=int,
-                        default=0,
-                        help='Num of workers for dataloader.')
     parser.add_argument('--port',
                         type=int,
                         default=19923,
@@ -68,18 +69,15 @@ def get_args():
                         type=str,
                         default='./checkpoints/',
                         help='Checkpoints saving path')
-    parser.add_argument('--load_path',
-                        type=str,
-                        default='',
-                        help='Loading model path')
-    parser.add_argument('--save_model',
-                        type=bool,
-                        default=False,
-                        help='Whether to save model or not')
-    parser.add_argument('--save_data',
-                        type=bool,
-                        default=False,
-                        help='Whether to save data or not')
+
+    parser.add_argument('--activation_freq',
+                        type=int,
+                        default=20,
+                        help='How frequently in terms of epochs should we store the embedding activations')
+    parser.add_argument('--single_frequency_epochs',
+                        type=int,
+                        default=-1,
+                        help='Store the embedding every epoch or not')
 
     args = parser.parse_args()
     return args

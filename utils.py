@@ -1,8 +1,10 @@
 import os
 import re
 import glob
+import copy
 import torch
 import logging
+import itertools
 import numpy as np
 from pathlib import Path
 
@@ -84,3 +86,58 @@ def update_config_with_dataset(
             task_class_weights = np.array([attribute_count[0] / attribute_count[1]])
 
     return task_class_weights
+
+
+def generate_hyper_param_configs(config):
+    if "grid_variables" not in config:
+        # Then nothing to see here so we will return a singleton set with this config in it
+        return [config]
+    # Else time to do some hyperparameter search in here!
+    vars = config["grid_variables"]
+    options = []
+    for var in vars:
+        if var not in config:
+            raise ValueError(f'All variable names in "grid_variables" must be exhisting '
+                             f'fields in the config. However, we could not find any field with name "{var}".')
+        if not isinstance(config[var], list):
+            raise ValueError(f'If we are doing a hyperparamter search over variable "{var}", '
+                             f'we expect it to be a list of values. Instead we got {config[var]}.')
+        options.append(config[var])
+    mode = config.get('grid_search_mode', "exhaustive").lower().strip()
+    if mode in ["grid", "exhaustive"]:
+        iterator = itertools.product(*options)
+    elif mode in ["paired"]:
+        iterator = zip(*options)
+    else:
+        raise ValueError(f'The only supported values for grid_search_mode '
+                         f'are "paired" and "exhaustive". We got {mode} instead.')
+    result = []
+    for specific_vals in iterator:
+        current = copy.deepcopy(config)
+        for var_name, new_val in zip(vars, specific_vals):
+            current[var_name] = new_val
+        result.append(current)
+    return result
+
+
+def evaluate_expressions(config, parent_config=None, soft=False):
+    parent_config = parent_config or config
+    for key, val in config.items():
+        if isinstance(val, (str,)):
+            if len(val) >= 4 and val[0:2] == "{{" and val[-2:] == "}}":
+                # Then do a simple substitution here
+                try:
+                    config[key] = val[2:-2].format(**parent_config)
+                    config[key] = eval(config[key])
+                except Exception as e:
+                    if soft:
+                        # Then we silently ignore this error
+                        pass
+                    else:
+                        # otherwise we just simply raise it again!
+                        raise e
+            else:
+                config[key] = val.format(**parent_config)
+        elif isinstance(val, dict):
+            # Then we progress recursively
+            evaluate_expressions(val, parent_config=parent_config)

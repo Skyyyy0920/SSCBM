@@ -1,6 +1,7 @@
 import yaml
-import time
 import zipfile
+from collections import defaultdict
+
 from utils import *
 from train.training import *
 from config.basic_config import *
@@ -13,7 +14,6 @@ if __name__ == '__main__':
     # ==================================================================================================
     # 1. Get experiment args and seed
     # ==================================================================================================
-    print('\n' + '=' * 36 + ' Get experiment configuration ' + '=' * 36)
     args = get_args()
     logging_time = time.strftime('%H-%M', time.localtime())
     save_dir = os.path.join(args.save_path, f"{args.dataset}_{logging_time}")
@@ -26,7 +26,6 @@ if __name__ == '__main__':
     # ==================================================================================================
     # 2. Save codes and settings
     # ==================================================================================================
-    print('\n' + '=' * 36 + ' Save codes and settings ' + '=' * 36)
     zipf = zipfile.ZipFile(file=os.path.join(save_dir, 'codes.zip'), mode='a', compression=zipfile.ZIP_DEFLATED)
     zipdir(Path().absolute(), zipf, include_format=['.py'])
     zipf.close()
@@ -38,7 +37,6 @@ if __name__ == '__main__':
     # ==================================================================================================
     # 3. Prepare data
     # ==================================================================================================
-    print('\n' + '=' * 36 + ' Prepare data ' + '=' * 36)
     dataset_config = experiment_config['dataset_config']
     if args.dataset == "CUB-200-2011":
         data_module = cub_data_module
@@ -54,10 +52,7 @@ if __name__ == '__main__':
     if experiment_config['c_extractor_arch'] == "mnist_extractor":
         num_operands = dataset_config.get('num_operands', 32)
         experiment_config["c_extractor_arch"] = mnist_data_module.get_mnist_extractor_arch(
-            input_shape=(dataset_config.get('batch_size', 512),
-                         num_operands,
-                         28,
-                         28),
+            input_shape=(dataset_config.get('batch_size', 512), num_operands, 28, 28),
             num_operands=num_operands,
         )
     elif experiment_config['c_extractor_arch'] == 'synth_extractor':
@@ -78,85 +73,51 @@ if __name__ == '__main__':
     )
 
     # ==================================================================================================
-    # 5. Build models, define overall loss and optimizer
+    # 4. Build models, define overall loss and optimizer. Then training
     # ==================================================================================================
-    print('\n' + '=' * 36 + ' Build models ' + '=' * 36)
+    results = defaultdict(dict)
+    for current_config in experiment_config['runs']:
+        run_name = current_config['architecture']
+        trial_config = copy.deepcopy(experiment_config)
+        trial_config.update(current_config)
 
-    model, model_results = train_end_to_end_model(
-        run_name=run_name,
-        task_class_weights=task_class_weights,
-        accelerator=args.device,
-        devices=devices,
-        n_concepts=run_config['n_concepts'],
-        n_tasks=run_config['n_tasks'],
-        config=run_config,
-        train_dl=train_dl,
-        val_dl=val_dl,
-        test_dl=test_dl,
-        split=split,
-        result_dir=result_dir,
-        rerun=current_rerun,
-        project_name=project_name,
-        seed=(42 + split),
-        imbalance=imbalance,
-        old_results=old_results,
-        gradient_clip_val=run_config.get(
-            'gradient_clip_val',
-            0,
-        ),
-        single_frequency_epochs=single_frequency_epochs,
-        activation_freq=activation_freq,
-    )
-    training.update_statistics(
-        aggregate_results=results[f'{split}'][run_name],
-        run_config=run_config,
-        model=model,
-        test_results=model_results,
-        run_name=run_name,
-        prefix="",
-    )
-    results[f'{split}'][run_name][f'num_trainable_params'] = sum(
-        p.numel() for p in model.parameters() if p.requires_grad
-    )
-    results[f'{split}'][run_name][f'num_non_trainable_params'] = sum(
-        p.numel() for p in model.parameters() if not p.requires_grad
-    )
+        for run_config in generate_hyper_param_configs(trial_config):
+            run_config = copy.deepcopy(run_config)
+            run_config['result_dir'] = save_dir
+            evaluate_expressions(run_config, soft=True)
 
-    import pytorch_lightning as pl
-    from cem.models.cem import ConceptEmbeddingModel
+            old_results = None
 
-    cem_model = ConceptEmbeddingModel(
-        n_concepts=n_concepts,  # Number of training-time concepts
-        n_tasks=n_tasks,  # Number of output labels
-        emb_size=16,
-        concept_loss_weight=0.1,
-        learning_rate=1e-3,
-        optimizer="adam",
-        training_intervention_prob=0.25,  # RandInt probability
-    )
-
-    #####
-    # Train it
-    #####
-
-    trainer = pl.Trainer(
-        accelerator="gpu",
-        devices="auto",
-        max_epochs=100,
-        check_val_every_n_epoch=5,
-    )
-    # train_dl and val_dl are datasets previously built...
-    trainer.fit(cem_model, train_dl, val_dl)
-
-    # ==================================================================================================
-    # 6. Load pre-trained model
-    # ==================================================================================================
-
-    # ==================================================================================================
-    # 7. Training
-    # ==================================================================================================
-    print('\n' + '=' * 36 + ' Start training ' + '=' * 36)
-
-    # ==================================================================================================
-    # 8. Validation and Testing
-    # ==================================================================================================
+            model, model_results = train_end_to_end_model(
+                run_name=run_name,
+                task_class_weights=task_class_weights,
+                accelerator=args.device,
+                devices='auto',
+                n_concepts=run_config['n_concepts'],
+                n_tasks=run_config['n_tasks'],
+                config=run_config,
+                train_dl=train_dl,
+                val_dl=val_dl,
+                test_dl=test_dl,
+                split=0,
+                result_dir=save_dir,
+                project_name=args.project_name,
+                seed=42,
+                imbalance=imbalance,
+                old_results=old_results,
+                gradient_clip_val=run_config.get('gradient_clip_val', 0),
+                activation_freq=args.activation_freq,
+                single_frequency_epochs=args.single_frequency_epochs,
+            )
+            update_statistics(
+                aggregate_results=results[run_name],
+                run_config=run_config,
+                model=model,
+                test_results=model_results,
+                run_name=run_name,
+                prefix="",
+            )
+            results[run_name][f'num_trainable_params'] = \
+                sum(p.numel() for p in model.parameters() if p.requires_grad)
+            results[run_name][f'num_non_trainable_params'] = \
+                sum(p.numel() for p in model.parameters() if not p.requires_grad)
