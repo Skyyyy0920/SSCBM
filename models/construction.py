@@ -12,11 +12,6 @@ import models.intcbm as models_intcbm
 import train.utils as utils
 
 
-################################################################################
-## HELPER LAYERS
-################################################################################
-
-
 class LambdaLayer(torch.nn.Module):
     def __init__(self, lambd):
         super(LambdaLayer, self).__init__()

@@ -667,8 +667,8 @@ class ConceptBottleneckModel(pl.LightningModule):
                     result[f'y_top_{top_k_val}_accuracy'] = y_top_k_accuracy
         return loss, result
 
-    def training_step(self, batch, batch_no):
-        loss, result = self._run_step(batch, batch_no, train=True)
+    def training_step(self, batch, batch_idx):
+        loss, result = self._run_step(batch, batch_idx, train=True)
         for name, val in result.items():
             if self.n_tasks <= 2:
                 prog_bar = (
@@ -703,11 +703,11 @@ class ConceptBottleneckModel(pl.LightningModule):
             },
         }
 
-    def validation_step(self, batch, batch_no):
-        _, result = self._run_step(batch, batch_no, train=False)
+    def validation_step(self, batch, batch_idx):
+        _, result = self._run_step(batch, batch_idx, train=False)
         for name, val in result.items():
             if self.n_tasks <= 2:
-                prog_bar = (("auc" in name))
+                prog_bar = ("auc" in name)
             else:
                 prog_bar = (("c_auc" in name) or ("y_accuracy" in name))
             self.log("val_" + name, val, prog_bar=prog_bar)
