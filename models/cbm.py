@@ -278,8 +278,7 @@ class ConceptBottleneckModel(pl.LightningModule):
         elif len(intervention_idxs.shape) == 2:
             assert intervention_idxs.shape[0] == batch_size, (
                 f'Expected intervention indices to have batch size {batch_size} '
-                f'but got intervention indices with '
-                f'shape {intervention_idxs.shape}.'
+                f'but got intervention indices with shape {intervention_idxs.shape}.'
             )
         else:
             raise ValueError(

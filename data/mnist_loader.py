@@ -312,7 +312,8 @@ def load_mnist_addition(
     else:
         y_test = torch.LongTensor(y_test)
     c_test = torch.FloatTensor(c_test)
-    test_data = torch.utils.data.TensorDataset(x_test, y_test, c_test)
+    l_test = torch.ones_like(c_test, dtype=torch.bool)
+    test_data = torch.utils.data.TensorDataset(x_test, y_test, c_test, l_test)
     test_dl = DataLoader(test_data, batch_size=batch_size, num_workers=num_workers)
     if uncertain_width and (not even_concepts):
         [test_dl] = inject_uncertainty(
@@ -379,7 +380,8 @@ def load_mnist_addition(
         else:
             y_val = torch.LongTensor(y_val)
         c_val = torch.FloatTensor(c_val)
-        val_data = torch.utils.data.TensorDataset(x_val, y_val, c_val)
+        l_val = torch.ones_like(c_val, dtype=torch.bool)
+        val_data = torch.utils.data.TensorDataset(x_val, y_val, c_val, l_val)
         val_dl = DataLoader(val_data, batch_size=batch_size, num_workers=num_workers)
         if uncertain_width and (not even_concepts):
             [val_dl] = inject_uncertainty(
@@ -417,15 +419,31 @@ def load_mnist_addition(
         y_train = torch.LongTensor(y_train)
     c_train = torch.FloatTensor(c_train)
 
-    train_data = torch.utils.data.TensorDataset(x_train, y_train, c_train)
+    np.random.seed(seed)
+    num_classes = torch.unique(y_train).size(0)
+    num_samples = len(y_train)
 
-    total_size = len(train_data)
-    labeled_size = int(labeled_ratio * total_size)
-    torch.manual_seed(seed)
-    labeled_data, unlabeled_data = random_split(train_data, [labeled_size, total_size - labeled_size])
+    num_labeled_per_class = torch.zeros(num_classes, dtype=torch.long)
+    for class_label in range(num_classes):
+        class_indices = (y_train == class_label).nonzero(as_tuple=True)[0]
+        num_labeled_per_class[class_label] = int(labeled_ratio * len(class_indices))
 
-    train_dl_labeled = DataLoader(labeled_data, batch_size=batch_size, num_workers=num_workers)
-    train_dl_unlabeled = DataLoader(unlabeled_data, batch_size=batch_size, num_workers=num_workers)
+    l_train = torch.zeros(num_samples, dtype=torch.bool)
+
+    for class_label in range(num_classes):
+        class_indices = (y_train == class_label).nonzero(as_tuple=True)[0]
+        # labeled_indices = np.random.choice(class_indices, size=num_labeled_per_class[class_label], replace=False)
+        rand_indices = torch.randperm(len(class_indices))
+        labeled_indices = class_indices[rand_indices[:num_labeled_per_class[class_label]]]
+        l_train[labeled_indices] = True
+
+    num_unlabeled = torch.sum(l_train == 0).item()
+    num_labeled = torch.sum(l_train == 1).item()
+
+    print(f"Unlabeled samples: {num_unlabeled}")
+    print(f"Labeled samples: {num_labeled}")
+
+    train_data = torch.utils.data.TensorDataset(x_train, y_train, c_train, l_train)
     train_dl = DataLoader(train_data, batch_size=batch_size, num_workers=num_workers)
 
     if uncertain_width and (not even_concepts):
@@ -439,12 +457,13 @@ def load_mnist_addition(
             threshold=threshold,
         )
 
-    return train_dl, train_dl_labeled, train_dl_unlabeled, val_dl, test_dl
+    return train_dl, val_dl, test_dl
 
 
 def generate_data(
         config,
         root_dir="data",
+        labeled_ratio=0.1,
         seed=42,
         rerun=False
 ):
@@ -545,8 +564,9 @@ def generate_data(
     else:
         concept_transform = None
 
-    train_dl, train_dl_labeled, train_dl_unlabeled, val_dl, test_dl = load_mnist_addition(
+    train_dl, val_dl, test_dl = load_mnist_addition(
         cache_dir=root_dir,
+        labeled_ratio=labeled_ratio,
         seed=seed,
         train_dataset_size=config.get("train_dataset_size", 30000),
         test_dataset_size=config.get("test_dataset_size", 10000),
@@ -576,10 +596,7 @@ def generate_data(
         attribute_count = np.zeros((num_concepts,))
         samples_seen = 0
         for i, data in enumerate(train_dl):
-            if len(data) == 2:
-                (_, (y, c)) = data
-            else:
-                (_, y, c) = data
+            _, y, c, _ = data
             c = c.cpu().detach().numpy()
             attribute_count += np.sum(c, axis=0)
             samples_seen += c.shape[0]
@@ -587,9 +604,7 @@ def generate_data(
     else:
         imbalance = None
 
-    train_dl_dict = train_dl, train_dl_labeled, train_dl_unlabeled
-
-    return train_dl_dict, val_dl, test_dl, imbalance, (num_concepts, n_tasks, concept_group_map)
+    return train_dl, val_dl, test_dl, imbalance, (num_concepts, n_tasks, concept_group_map)
 
 
 def get_mnist_extractor_arch(input_shape, num_operands):

@@ -67,10 +67,7 @@ def update_config_with_dataset(
         attribute_count = np.zeros((max(n_tasks, 2),))
         samples_seen = 0
         for i, data in enumerate(train_dl):
-            if len(data) == 2:
-                (_, (y, _)) = data
-            else:
-                (_, y, _) = data
+            _, y, _, _ = data
             if n_tasks > 1:
                 y = torch.nn.functional.one_hot(y, num_classes=n_tasks).cpu().detach().numpy()
             else:

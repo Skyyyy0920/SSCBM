@@ -82,6 +82,8 @@ use_task_class_weights: True
 weight_loss: True
 check_val_every_n_epoch: 2
 
+labeled_ratio: 0.2
+
 runs:
   - architecture: 'ConceptEmbeddingModel'
     run_name: "CEM"
