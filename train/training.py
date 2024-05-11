@@ -166,20 +166,14 @@ def train_end_to_end_model(
         fit_trainer = trainer
 
     model_saved_path = os.path.join(result_dir or ".", f'{full_run_name}.pt')
-    if (not rerun) and os.path.exists(model_saved_path):
-        # Then we simply load the model and proceed
+    if not rerun and os.path.exists(model_saved_path):
         print("\tFound cached model... loading it")
         model.load_state_dict(torch.load(model_saved_path))
-        if os.path.exists(
-                model_saved_path.replace(".pt", "_training_times.npy")
-        ):
-            [training_time, num_epochs] = np.load(
-                model_saved_path.replace(".pt", "_training_times.npy"),
-            )
+        if os.path.exists(model_saved_path.replace(".pt", "_training_times.npy")):
+            [training_time, num_epochs] = np.load(model_saved_path.replace(".pt", "_training_times.npy"))
         else:
             training_time, num_epochs = 0, 0
     else:
-        # Else it is time to train it
         start_time = time.time()
         fit_trainer.fit(model, train_dl, val_dl)
         training_time = time.time() - start_time

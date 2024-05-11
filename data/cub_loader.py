@@ -7,7 +7,7 @@ from pytorch_lightning import seed_everything
 from collections import defaultdict
 
 from PIL import Image
-from torch.utils.data import Dataset, DataLoader
+from torch.utils.data import Dataset, DataLoader, random_split
 
 # ====================================
 # GENERAL DATASET GLOBAL VARIABLES
@@ -923,6 +923,97 @@ def load_data(
     return loader
 
 
+def load_data_split(
+        pkl_paths,
+        use_attr,
+        no_img,
+        batch_size,
+        labeled_ratio=0.2,
+        seed=42,
+        uncertain_label=False,
+        n_class_attr=2,
+        image_dir='images',
+        resampling=False,
+        resol=299,
+        root_dir='../data/CUB200/',
+        num_workers=1,
+        concept_transform=None,
+        label_transform=None,
+        path_transform=None,
+        is_chexpert=False,
+):
+    """
+    Split the dataset into labeled data and unlabeled data
+    """
+    resized_resol = int(resol * 256 / 224)
+    is_training = any(['train.pkl' in f for f in pkl_paths])
+    if is_training:
+        if is_chexpert:
+            transform = transforms.Compose([
+                transforms.CenterCrop((320, 320)),
+                transforms.RandomHorizontalFlip(p=0.5),
+                transforms.ColorJitter(0.1),
+                transforms.ToTensor(),
+            ])
+        else:
+            transform = transforms.Compose([
+                transforms.ColorJitter(brightness=32 / 255, saturation=(0.5, 1.5)),
+                transforms.RandomResizedCrop(resol),
+                transforms.RandomHorizontalFlip(),
+                transforms.ToTensor(),  # implicitly divides by 255
+                transforms.Normalize(mean=[0.5, 0.5, 0.5], std=[2, 2, 2])
+            ])
+    else:
+        if is_chexpert:
+            transform = transforms.Compose([
+                transforms.CenterCrop((320, 320)),
+                transforms.ToTensor(),
+            ])
+        else:
+            transform = transforms.Compose([
+                transforms.CenterCrop(resol),
+                transforms.ToTensor(),  # implicitly divides by 255
+                transforms.Normalize(mean=[0.5, 0.5, 0.5], std=[2, 2, 2])
+            ])
+
+    dataset = CUBDataset(
+        pkl_file_paths=pkl_paths,
+        use_attr=use_attr,
+        no_img=no_img,
+        uncertain_label=uncertain_label,
+        image_dir=image_dir,
+        n_class_attr=n_class_attr,
+        transform=transform,
+        root_dir=root_dir,
+        concept_transform=concept_transform,
+        label_transform=label_transform,
+        path_transform=path_transform,
+    )
+
+    total_size = len(dataset)
+    labeled_size = int(labeled_ratio * total_size)
+    torch.manual_seed(seed)
+    labeled_data, unlabeled_data = random_split(dataset, [labeled_size, total_size - labeled_size])
+
+    if is_training:
+        drop_last = True
+        shuffle = True
+    else:
+        drop_last = False
+        shuffle = False
+    if resampling:
+        sampler = StratifiedSampler(ImbalancedDatasetSampler(dataset), batch_size=batch_size)
+        labeled_loader = DataLoader(labeled_data, batch_sampler=sampler, num_workers=num_workers)
+        unlabeled_loader = DataLoader(unlabeled_data, batch_sampler=sampler, num_workers=num_workers)
+    else:
+        labeled_loader = DataLoader(labeled_data, batch_size=batch_size, shuffle=shuffle, drop_last=drop_last,
+                                    num_workers=num_workers)
+        unlabeled_loader = DataLoader(unlabeled_data, batch_size=batch_size, shuffle=shuffle, drop_last=drop_last,
+                                      num_workers=num_workers)
+
+    return labeled_loader, unlabeled_loader
+
+
 def find_class_imbalance(pkl_file, multiple_attr=False, attr_idx=-1):
     """
     Calculate class imbalance ratio for binary attribute labels stored in pkl_file
@@ -965,6 +1056,7 @@ def find_class_imbalance(pkl_file, multiple_attr=False, attr_idx=-1):
 # ================================================
 def generate_data(
         config,
+        labeled_ratio=0.1,
         seed=42,
         output_dataset_vars=False,
         rerun=False
@@ -1060,7 +1152,9 @@ def generate_data(
     else:
         concept_transform = None
 
-    train_dl = load_data(
+    train_dl = load_data_split(
+        labeled_ratio=labeled_ratio,
+        seed=seed,
         pkl_paths=[train_data_path],
         use_attr=True,
         no_img=False,

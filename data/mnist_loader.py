@@ -7,6 +7,7 @@ import torch
 import torchvision
 
 from pytorch_lightning import seed_everything
+from torch.utils.data import Dataset, TensorDataset, DataLoader, random_split
 
 
 def inject_uncertainty(
@@ -91,13 +92,7 @@ def inject_uncertainty(
 
         y = torch.cat(ys, dim=0)
         c = torch.FloatTensor(np.concatenate(cs, axis=0))
-        results.append(
-            torch.utils.data.DataLoader(
-                torch.utils.data.TensorDataset(x, y, c),
-                batch_size=batch_size,
-                num_workers=num_workers,
-            ),
-        )
+        results.append(DataLoader(TensorDataset(x, y, c), batch_size=batch_size, num_workers=num_workers))
     return results
 
 
@@ -231,6 +226,7 @@ def produce_addition_set(
 
 def load_mnist_addition(
         cache_dir="data",
+        labeled_ratio=0.2,
         seed=42,
         train_dataset_size=30000,
         test_dataset_size=10000,
@@ -317,11 +313,7 @@ def load_mnist_addition(
         y_test = torch.LongTensor(y_test)
     c_test = torch.FloatTensor(c_test)
     test_data = torch.utils.data.TensorDataset(x_test, y_test, c_test)
-    test_dl = torch.utils.data.DataLoader(
-        test_data,
-        batch_size=batch_size,
-        num_workers=num_workers,
-    )
+    test_dl = DataLoader(test_data, batch_size=batch_size, num_workers=num_workers)
     if uncertain_width and (not even_concepts):
         [test_dl] = inject_uncertainty(
             test_dl,
@@ -388,11 +380,7 @@ def load_mnist_addition(
             y_val = torch.LongTensor(y_val)
         c_val = torch.FloatTensor(c_val)
         val_data = torch.utils.data.TensorDataset(x_val, y_val, c_val)
-        val_dl = torch.utils.data.DataLoader(
-            val_data,
-            batch_size=batch_size,
-            num_workers=num_workers,
-        )
+        val_dl = DataLoader(val_data, batch_size=batch_size, num_workers=num_workers)
         if uncertain_width and (not even_concepts):
             [val_dl] = inject_uncertainty(
                 val_dl,
@@ -428,12 +416,17 @@ def load_mnist_addition(
     else:
         y_train = torch.LongTensor(y_train)
     c_train = torch.FloatTensor(c_train)
+
     train_data = torch.utils.data.TensorDataset(x_train, y_train, c_train)
-    train_dl = torch.utils.data.DataLoader(
-        train_data,
-        batch_size=batch_size,
-        num_workers=num_workers,
-    )
+
+    total_size = len(train_data)
+    labeled_size = int(labeled_ratio * total_size)
+    torch.manual_seed(seed)
+    labeled_data, unlabeled_data = random_split(train_data, [labeled_size, total_size - labeled_size])
+
+    train_dl_labeled = DataLoader(labeled_data, batch_size=batch_size, num_workers=num_workers)
+    train_dl_unlabeled = DataLoader(unlabeled_data, batch_size=batch_size, num_workers=num_workers)
+    train_dl = DataLoader(train_data, batch_size=batch_size, num_workers=num_workers)
 
     if uncertain_width and (not even_concepts):
         [train_dl] = inject_uncertainty(
@@ -446,9 +439,7 @@ def load_mnist_addition(
             threshold=threshold,
         )
 
-    if val_dl is not None:
-        return train_dl, val_dl, test_dl
-    return train_dl, test_dl
+    return train_dl_labeled, train_dl_unlabeled, train_dl, val_dl, test_dl
 
 
 def generate_data(
@@ -555,7 +546,7 @@ def generate_data(
     else:
         concept_transform = None
 
-    train_dl, val_dl, test_dl = load_mnist_addition(
+    train_dl_labeled, train_dl_unlabeled, train_dl, val_dl, test_dl = load_mnist_addition(
         cache_dir=root_dir,
         seed=seed,
         train_dataset_size=config.get("train_dataset_size", 30000),
@@ -596,6 +587,8 @@ def generate_data(
         imbalance = samples_seen / attribute_count - 1
     else:
         imbalance = None
+
+    train_dl = train_dl_labeled, train_dl_unlabeled
     if not output_dataset_vars:
         return train_dl, val_dl, test_dl, imbalance
     return train_dl, val_dl, test_dl, imbalance, (num_concepts, n_tasks, concept_group_map)

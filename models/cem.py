@@ -353,8 +353,7 @@ class ConceptEmbeddingModel(ConceptBottleneckModel):
                 batch_size=x.shape[0],
             )
 
-        # Then, time to do the mixing between the positive and the
-        # negative embeddings
+        # Then, time to do the mixing between the positive and the negative embeddings
         probs, intervention_idxs = self._after_interventions(
             c_sem,
             pos_embeddings=contexts[:, :, :self.emb_size],

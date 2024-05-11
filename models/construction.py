@@ -21,11 +21,6 @@ class LambdaLayer(torch.nn.Module):
         return self.lambd(x)
 
 
-################################################################################
-## MODEL CONSTRUCTION
-################################################################################
-
-
 def construct_model(
         n_concepts,
         n_tasks,

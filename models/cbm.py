@@ -598,11 +598,9 @@ class ConceptBottleneckModel(pl.LightningModule):
             task_loss = 0
             task_loss_scalar = 0
         if self.concept_loss_weight != 0:
-            # We separate this so that we are allowed to
-            # use arbitrary activations (i.e., not necessarily in [0, 1])
+            # We separate this so that we are allowed to use arbitrary activations (i.e., not necessarily in [0, 1])
             # whenever no concept supervision is provided
-            # Will only compute the concept loss for concepts whose certainty
-            # values are fully given
+            # Will only compute the concept loss for concepts whose certainty values are fully given
             concept_loss = self.loss_concept(c_sem, c)
             concept_loss_scalar = concept_loss.detach()
             loss = self.concept_loss_weight * concept_loss + task_loss + \

@@ -62,7 +62,10 @@ if __name__ == '__main__':
     train_dl, val_dl, test_dl, imbalance, (n_concepts, n_tasks, concept_map) = data_module.generate_data(
         config=dataset_config,
         seed=42,
-        output_dataset_vars=True)
+        output_dataset_vars=True
+    )
+
+    train_dl_labeled, train_dl_unlabeled = train_dl
 
     task_class_weights = update_config_with_dataset(
         config=experiment_config,
