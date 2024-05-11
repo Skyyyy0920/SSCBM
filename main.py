@@ -59,13 +59,9 @@ if __name__ == '__main__':
         input_features = get_synthetic_num_features(dataset_config["dataset"])
         experiment_config["c_extractor_arch"] = get_synthetic_extractor_arch(input_features)
 
-    train_dl, val_dl, test_dl, imbalance, (n_concepts, n_tasks, concept_map) = data_module.generate_data(
-        config=dataset_config,
-        seed=42,
-        output_dataset_vars=True
-    )
-
-    train_dl_labeled, train_dl_unlabeled = train_dl
+    train_dl_dict, val_dl, test_dl, imbalance, (n_concepts, n_tasks, concept_map) = \
+        data_module.generate_data(config=dataset_config, seed=42)
+    train_dl, train_dl_labeled, train_dl_unlabeled = train_dl_dict
 
     task_class_weights = update_config_with_dataset(
         config=experiment_config,
@@ -99,7 +95,8 @@ if __name__ == '__main__':
                 n_concepts=run_config['n_concepts'],
                 n_tasks=run_config['n_tasks'],
                 config=run_config,
-                train_dl=train_dl,
+                train_dl_labeled=train_dl_labeled,
+                train_dl_unlabeled=train_dl_unlabeled,
                 val_dl=val_dl,
                 test_dl=test_dl,
                 split=0,

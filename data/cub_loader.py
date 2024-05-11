@@ -1005,13 +1005,16 @@ def load_data_split(
         sampler = StratifiedSampler(ImbalancedDatasetSampler(dataset), batch_size=batch_size)
         labeled_loader = DataLoader(labeled_data, batch_sampler=sampler, num_workers=num_workers)
         unlabeled_loader = DataLoader(unlabeled_data, batch_sampler=sampler, num_workers=num_workers)
+        loader = DataLoader(dataset, batch_sampler=sampler, num_workers=num_workers)
     else:
         labeled_loader = DataLoader(labeled_data, batch_size=batch_size, shuffle=shuffle, drop_last=drop_last,
                                     num_workers=num_workers)
         unlabeled_loader = DataLoader(unlabeled_data, batch_size=batch_size, shuffle=shuffle, drop_last=drop_last,
                                       num_workers=num_workers)
+        loader = DataLoader(dataset, batch_size=batch_size, shuffle=shuffle, drop_last=drop_last,
+                            num_workers=num_workers)
 
-    return labeled_loader, unlabeled_loader
+    return loader, labeled_loader, unlabeled_loader
 
 
 def find_class_imbalance(pkl_file, multiple_attr=False, attr_idx=-1):
@@ -1058,7 +1061,6 @@ def generate_data(
         config,
         labeled_ratio=0.1,
         seed=42,
-        output_dataset_vars=False,
         rerun=False
 ):
     root_dir = config['root_dir']
@@ -1152,7 +1154,7 @@ def generate_data(
     else:
         concept_transform = None
 
-    train_dl = load_data_split(
+    train_dl, train_dl_labeled, train_dl_unlabeled = load_data_split(
         labeled_ratio=labeled_ratio,
         seed=seed,
         pkl_paths=[train_data_path],
@@ -1194,6 +1196,6 @@ def generate_data(
         num_workers=config['num_workers'],
         concept_transform=concept_transform,
     )
-    if not output_dataset_vars:
-        return train_dl, val_dl, test_dl, imbalance
-    return train_dl, val_dl, test_dl, imbalance, (n_concepts, N_CLASSES, concept_group_map)
+
+    train_dl_dict = train_dl, train_dl_labeled, train_dl_unlabeled
+    return train_dl_dict, val_dl, test_dl, imbalance, (n_concepts, N_CLASSES, concept_group_map)

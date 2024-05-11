@@ -439,14 +439,13 @@ def load_mnist_addition(
             threshold=threshold,
         )
 
-    return train_dl_labeled, train_dl_unlabeled, train_dl, val_dl, test_dl
+    return train_dl, train_dl_labeled, train_dl_unlabeled, val_dl, test_dl
 
 
 def generate_data(
         config,
         root_dir="data",
         seed=42,
-        output_dataset_vars=False,
         rerun=False
 ):
     selected_digits = config.get("selected_digits", list(range(2)))
@@ -546,7 +545,7 @@ def generate_data(
     else:
         concept_transform = None
 
-    train_dl_labeled, train_dl_unlabeled, train_dl, val_dl, test_dl = load_mnist_addition(
+    train_dl, train_dl_labeled, train_dl_unlabeled, val_dl, test_dl = load_mnist_addition(
         cache_dir=root_dir,
         seed=seed,
         train_dataset_size=config.get("train_dataset_size", 30000),
@@ -588,10 +587,9 @@ def generate_data(
     else:
         imbalance = None
 
-    train_dl = train_dl_labeled, train_dl_unlabeled
-    if not output_dataset_vars:
-        return train_dl, val_dl, test_dl, imbalance
-    return train_dl, val_dl, test_dl, imbalance, (num_concepts, n_tasks, concept_group_map)
+    train_dl_dict = train_dl, train_dl_labeled, train_dl_unlabeled
+
+    return train_dl_dict, val_dl, test_dl, imbalance, (num_concepts, n_tasks, concept_group_map)
 
 
 def get_mnist_extractor_arch(input_shape, num_operands):

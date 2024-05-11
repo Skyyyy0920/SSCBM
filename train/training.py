@@ -87,7 +87,8 @@ def train_end_to_end_model(
         n_concepts,
         n_tasks,
         config,
-        train_dl,
+        train_dl_labeled,
+        train_dl_unlabeled,
         val_dl,
         run_name,
         result_dir=None,
@@ -175,7 +176,7 @@ def train_end_to_end_model(
             training_time, num_epochs = 0, 0
     else:
         start_time = time.time()
-        fit_trainer.fit(model, train_dl, val_dl)
+        fit_trainer.fit(model, train_dl_labeled, val_dl)
         training_time = time.time() - start_time
         num_epochs = fit_trainer.current_epoch
         if save_model and result_dir:
