@@ -5,8 +5,10 @@ import random
 import sklearn.model_selection
 import torch
 import torchvision
-
+import torchvision.transforms as transforms
 from pytorch_lightning import seed_everything
+from torchvision.models import resnet50
+from sklearn.neighbors import NearestNeighbors
 from torch.utils.data import Dataset, TensorDataset, DataLoader, random_split
 
 
@@ -313,7 +315,7 @@ def load_mnist_addition(
         y_test = torch.LongTensor(y_test)
     c_test = torch.FloatTensor(c_test)
     l_test = torch.ones(len(c_test), dtype=torch.bool)
-    test_data = torch.utils.data.TensorDataset(x_test, y_test, c_test, l_test)
+    test_data = torch.utils.data.TensorDataset(x_test, y_test, c_test, l_test, l_test, l_test)
     test_dl = DataLoader(test_data, batch_size=batch_size, num_workers=num_workers)
     if uncertain_width and (not even_concepts):
         [test_dl] = inject_uncertainty(
@@ -381,7 +383,7 @@ def load_mnist_addition(
             y_val = torch.LongTensor(y_val)
         c_val = torch.FloatTensor(c_val)
         l_val = torch.ones(len(c_val), dtype=torch.bool)
-        val_data = torch.utils.data.TensorDataset(x_val, y_val, c_val, l_val)
+        val_data = torch.utils.data.TensorDataset(x_val, y_val, c_val, l_val, l_val, l_val)
         val_dl = DataLoader(val_data, batch_size=batch_size, num_workers=num_workers)
         if uncertain_width and (not even_concepts):
             [val_dl] = inject_uncertainty(
@@ -437,7 +439,37 @@ def load_mnist_addition(
         labeled_indices = class_indices[rand_indices[:num_labeled_per_class[class_label]]]
         l_train[labeled_indices] = True
 
-    train_data = torch.utils.data.TensorDataset(x_train, y_train, c_train, l_train)
+    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+    model = resnet50(pretrained=True).to(device)
+    model.eval()
+
+    from tqdm import tqdm
+
+    img_tensor = x_train.to(device)
+    num_chunks = 10
+    chunked_tensors = torch.chunk(img_tensor, num_chunks, dim=0)
+
+    features = []
+    with torch.no_grad():
+        for chunk in tqdm(chunked_tensors):
+            features.append(model(chunk))
+    features = torch.cat(features, dim=0)
+    features = features.detach().cpu().numpy()
+    labeled_features = []
+    for idx in range(len(features)):
+        if l_train[idx]:
+            labeled_features.append(features[idx])
+    labeled_features = np.array(labeled_features)
+    nbrs = NearestNeighbors(n_neighbors=3, metric='cosine')
+    nbrs.fit(labeled_features)
+    distances, indices = nbrs.kneighbors(features)
+
+    weights = 1.0 / (distances + 1e-6)
+    weights = weights / np.sum(weights, axis=1, keepdims=True)
+
+    ss = [{'indices': idx, 'weights': w} for idx, w in zip(indices, weights)]
+
+    train_data = torch.utils.data.TensorDataset(x_train, y_train, c_train, l_train, l_train, l_train)
     train_dl = DataLoader(train_data, batch_size=batch_size, num_workers=num_workers)
 
     if uncertain_width and (not even_concepts):
@@ -590,7 +622,7 @@ def generate_data(
         attribute_count = np.zeros((num_concepts,))
         samples_seen = 0
         for i, data in enumerate(train_dl):
-            _, y, c, _ = data
+            _, y, c, _, _, _ = data
             c = c.cpu().detach().numpy()
             attribute_count += np.sum(c, axis=0)
             samples_seen += c.shape[0]

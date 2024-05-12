@@ -16,8 +16,8 @@ def get_args():
     parser.add_argument('--dataset',
                         type=str,
                         # default='CelebA',
-                        # default='CUB-200-2011',
-                        default='MNIST',
+                        default='CUB-200-2011',
+                        # default='MNIST',
                         # default='XOR',
                         # default='Dot',
                         # default='Trigonometric',
@@ -27,7 +27,7 @@ def get_args():
     # Operation environment
     parser.add_argument('--seed',
                         type=int,
-                        default=20020310,
+                        default=2002,
                         help='Random seed')
     parser.add_argument('--device',
                         type=str,

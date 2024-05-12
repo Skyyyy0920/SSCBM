@@ -238,16 +238,16 @@ class ConceptBottleneckModel(pl.LightningModule):
         self.use_concept_groups = use_concept_groups
 
     def _unpack_batch(self, batch):
-        x, y, c, l = batch[0], batch[1], batch[2], batch[3]
-        if len(batch) > 4:
-            competencies = batch[3]
+        x, y, c, l, nbr_y, nbr_w = batch[0], batch[1], batch[2], batch[3], batch[4], batch[5]
+        if len(batch) > 6:
+            competencies = batch[6]
         else:
             competencies = None
-        if len(batch) > 5:
-            prev_interventions = batch[4]
+        if len(batch) > 7:
+            prev_interventions = batch[7]
         else:
             prev_interventions = None
-        return x, y, c, l, competencies, prev_interventions
+        return x, y, c, l, nbr_y, nbr_w, competencies, prev_interventions
 
     def _standardize_indices(self, intervention_idxs, batch_size):
         if isinstance(intervention_idxs, list):
@@ -265,8 +265,7 @@ class ConceptBottleneckModel(pl.LightningModule):
                 f'Unsupported intervention indices {intervention_idxs}'
             )
         if len(intervention_idxs.shape) == 1:
-            # Then we will assume that we will do use the same
-            # intervention indices for the entire batch!
+            # Then we will assume that we will do use the same intervention indices for the entire batch!
             intervention_idxs = torch.tile(
                 torch.unsqueeze(intervention_idxs, 0),
                 (batch_size, 1),
@@ -420,8 +419,7 @@ class ConceptBottleneckModel(pl.LightningModule):
             latent = self.x2c_model(x)
         if self.sigmoidal_prob or self.bool:
             if self.extra_dims:
-                # Then we only sigmoid on the probability bits but
-                # let the other entries up for grabs
+                # Then we only sigmoid on the probability bits but let the other entries up for grabs
                 c_pred_probs = self.sig(latent[:, :-self.extra_dims])
                 c_others = self.bottleneck_nonlin(latent[:, -self.extra_dims:])
                 c_pred = torch.cat([c_pred_probs, c_others], axis=-1)
@@ -430,8 +428,7 @@ class ConceptBottleneckModel(pl.LightningModule):
                 c_pred = self.sig(latent)
                 c_sem = c_pred
         else:
-            # Otherwise, the concept vector itself is not sigmoided
-            # but the semantics
+            # Otherwise, the concept vector itself is not sigmoided but the semantics
             c_pred = latent
             if self.extra_dims:
                 c_sem = self.sig(latent[:, :-self.extra_dims])
@@ -557,7 +554,7 @@ class ConceptBottleneckModel(pl.LightningModule):
             intervention_idxs=None,
             dataloader_idx=0,
     ):
-        x, y, c, l, competencies, prev_interventions = self._unpack_batch(batch)
+        x, y, c, l, nbr_y, nbr_w, competencies, prev_interventions = self._unpack_batch(batch)
         return self._forward(
             x,
             intervention_idxs=intervention_idxs,
@@ -576,7 +573,7 @@ class ConceptBottleneckModel(pl.LightningModule):
             train=False,
             intervention_idxs=None,
     ):
-        x, y, c, l, competencies, prev_interventions = self._unpack_batch(batch)
+        x, y, c, l, nbr_y, nbr_w, competencies, prev_interventions = self._unpack_batch(batch)
         outputs = self._forward(
             x,
             intervention_idxs=intervention_idxs,
@@ -666,11 +663,6 @@ class ConceptBottleneckModel(pl.LightningModule):
         return loss, result
 
     def training_step(self, batch, batch_idx):
-        x, y, c, l, competencies, prev_interventions = self._unpack_batch(batch)
-        true_count = torch.sum(l).item()
-        false_count = torch.sum(~l).item()
-        print(f'True 的数量：{true_count}')
-        print(f'False 的数量：{false_count}')
         loss, result = self._run_step(batch, batch_idx, train=True)
         for name, val in result.items():
             if self.n_tasks <= 2:

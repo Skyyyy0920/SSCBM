@@ -5,8 +5,9 @@ import pickle
 import numpy as np
 import torchvision.transforms as transforms
 from pytorch_lightning import seed_everything
+from torchvision.models import resnet50
+from sklearn.neighbors import NearestNeighbors
 from collections import defaultdict
-
 from PIL import Image
 from torch.utils.data import Dataset, DataLoader, random_split
 
@@ -770,22 +771,166 @@ class CUBDataset(Dataset):
             for idx in range(len(self.data)):
                 self.l_choice[idx] = True
 
-    def __len__(self):
-        return len(self.data)
+        # for idx, img_data in enumerate(self.data):
+        #     if idx == 1:
+        #         img_path = img_data['img_path']
+        #         img_path = img_path.replace(
+        #             '/juice/scr/scr102/scr/thaonguyen/CUB_supervision/datasets/',
+        #             './data/CUB_200_2011/'
+        #         )
+        #         img1 = Image.open(img_path).convert('RGB')
+        #     if idx == 164:
+        #         img_path = img_data['img_path']
+        #         img_path = img_path.replace(
+        #             '/juice/scr/scr102/scr/thaonguyen/CUB_supervision/datasets/',
+        #             './data/CUB_200_2011/'
+        #         )
+        #         img2 = Image.open(img_path).convert('RGB')
+        #     if idx == 75:
+        #         img_path = img_data['img_path']
+        #         img_path = img_path.replace(
+        #             '/juice/scr/scr102/scr/thaonguyen/CUB_supervision/datasets/',
+        #             './data/CUB_200_2011/'
+        #         )
+        #         img3 = Image.open(img_path).convert('RGB')
+        #     if idx == 6:
+        #         img_path = img_data['img_path']
+        #         img_path = img_path.replace(
+        #             '/juice/scr/scr102/scr/thaonguyen/CUB_supervision/datasets/',
+        #             './data/CUB_200_2011/'
+        #         )
+        #         img4 = Image.open(img_path).convert('RGB')
+        #     else:
+        #         continue
+        #
+        # import matplotlib
+        # matplotlib.use('TkAgg')
+        # import matplotlib.pyplot as plt
+        #
+        # plt.figure(figsize=(10, 8))
+        #
+        # # 第一张图
+        # plt.subplot(2, 2, 1)
+        # plt.imshow(img1)
+        # plt.axis('off')
+        #
+        # # 第二张图
+        # plt.subplot(2, 2, 2)
+        # plt.imshow(img2)
+        # plt.axis('off')
+        #
+        # # 第三张图
+        # plt.subplot(2, 2, 3)
+        # plt.imshow(img3)
+        # plt.axis('off')
+        #
+        # plt.subplot(2, 2, 4)
+        # plt.imshow(img4)
+        # plt.axis('off')
+        #
+        # plt.show()
 
-    def __getitem__(self, idx):
-        img_data = self.data[idx]
-        l = self.l_choice[idx]
-        img_path = img_data['img_path']
-        if self.path_transform is None:
+        self.neighbor = self.nearest_neighbors_resnet(k=3)
+
+    def nearest_neighbors_resnet(self, k=3):
+        """
+        Compute k-nearest neighbors for each image using ResNet50 features and assign weights based on distances
+        """
+        preprocess = transforms.Compose([
+            transforms.Resize(256),
+            transforms.CenterCrop(224),
+            transforms.ToTensor(),
+            transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
+        ])
+
+        device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+        model = resnet50(pretrained=True).to(device)
+        model.eval()
+
+        from tqdm import tqdm
+        imgs = []
+        for img_data in tqdm(self.data):
+            img_path = img_data['img_path']
             img_path = img_path.replace(
                 '/juice/scr/scr102/scr/thaonguyen/CUB_supervision/datasets/',
                 './data/CUB_200_2011/'
             )
             img = Image.open(img_path).convert('RGB')
-        else:
-            img_path = self.path_transform(img_path)
-            img = Image.open(img_path).convert('RGB')
+            img_tensor = preprocess(img).unsqueeze(0)
+            imgs.append(img_tensor)
+        imgs_tensor = torch.cat(imgs, dim=0)
+        imgs_tensor = imgs_tensor.to(device)
+        num_chunks = 10
+        chunked_tensors = torch.chunk(imgs_tensor, num_chunks, dim=0)
+
+        features = []
+        with torch.no_grad():
+            for chunk in tqdm(chunked_tensors):
+                features.append(model(chunk))
+        features = torch.cat(features, dim=0)
+        features = features.detach().cpu().numpy()
+        labeled_features = []
+        for idx in range(len(features)):
+            if self.l_choice[idx]:
+                labeled_features.append(features[idx])
+        labeled_features = np.array(labeled_features)
+        nbrs = NearestNeighbors(n_neighbors=k, metric='cosine')
+        nbrs.fit(labeled_features)
+        distances, indices = nbrs.kneighbors(features)
+
+        weights = 1.0 / (distances + 1e-6)
+        weights = weights / np.sum(weights, axis=1, keepdims=True)
+
+        return [{'indices': idx, 'weights': w} for idx, w in zip(indices, weights)]
+
+    def nearest_neighbors_clip(self, k=4):
+        import torch
+        import clip
+        from PIL import Image
+        from torchvision.transforms import Compose, Resize, CenterCrop, ToTensor, Normalize
+
+        # 加载 CLIP 模型
+        device = "cuda" if torch.cuda.is_available() else "cpu"
+        model, preprocess = clip.load("ViT-B/32", device=device)
+        model.eval()
+
+        def extract_image_features(image_path):
+            # 加载并预处理图像
+            image = Image.open(image_path)
+            image_input = preprocess(image).unsqueeze(0).to(device)
+
+            # 提取特征
+            with torch.no_grad():
+                image_features = model.encode_image(image_input)
+
+            return image_features
+
+        image_path = "path_to_your_image.jpg"
+        image_features = extract_image_features(image_path)
+        print(image_features.shape)  # 输出特征的形状
+
+    def __len__(self):
+        return len(self.data)
+
+    def __getitem__(self, idx):
+        if idx == 1:
+            print(f"getitem idx: {idx}, nei: {self.neighbor[idx]['indices']}")
+        img_data = self.data[idx]
+        l = self.l_choice[idx]
+        neighbor_info = self.neighbor[idx]
+        neighbor_indices = neighbor_info['indices']
+        nbr_class = []
+        for idx in neighbor_indices:
+            nbr_class.append(self.data[idx]['class_label'])
+        nbr_class = torch.tensor(nbr_class)
+        nbr_weight = torch.from_numpy(neighbor_info['weights'])
+
+        img_path = img_data['img_path']
+        img_path = img_path.replace(
+            '/juice/scr/scr102/scr/thaonguyen/CUB_supervision/datasets/',
+            './data/CUB_200_2011/'
+        )
+        img = Image.open(img_path).convert('RGB')
 
         class_label = img_data['class_label']
         if self.label_transform:
@@ -805,11 +950,11 @@ class CUBDataset(Dataset):
                     (len(SELECTED_CONCEPTS), self.n_class_attr)
                 )
                 one_hot_attr_label[np.arange(len(SELECTED_CONCEPTS)), attr_label] = 1
-                return one_hot_attr_label, class_label, torch.tensor(l)
+                return one_hot_attr_label, class_label, torch.tensor(l), nbr_class, nbr_weight
             else:
-                return attr_label, class_label, torch.tensor(l)
+                return attr_label, class_label, torch.tensor(l), nbr_class, nbr_weight
         else:
-            return img, class_label, torch.FloatTensor(attr_label), torch.tensor(l)
+            return img, class_label, torch.FloatTensor(attr_label), torch.tensor(l), nbr_class, nbr_weight
 
 
 class ImbalancedDatasetSampler(torch.utils.data.sampler.Sampler):
