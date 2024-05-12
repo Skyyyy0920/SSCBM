@@ -1,5 +1,6 @@
 import os
 import torch
+import random
 import pickle
 import numpy as np
 import torchvision.transforms as transforms
@@ -721,13 +722,12 @@ class CUBDataset(Dataset):
     Returns a compatible Torch Dataset object customized for the CUB data
     """
 
-    def __init__(self, pkl_file_paths, use_attr, no_img, uncertain_label, image_dir, n_class_attr,
-                 root_dir='../data/CUB200/', path_transform=None, transform=None, concept_transform=None,
-                 label_transform=None):
+    def __init__(self, pkl_file_paths, no_img, uncertain_label, image_dir, n_class_attr, labeled_ratio, training,
+                 seed=42, root_dir='../data/CUB200/', path_transform=None, transform=None,
+                 concept_transform=None, label_transform=None):
         """
         Arguments:
         pkl_file_paths: list of full path to all the pkl data
-        use_attr: whether to load the attributes (e.g. False for simple finetune)
         no_img: whether to load the images (e.g. False for A -> Y model)
         uncertain_label: if True, use 'uncertain_attribute_label' field (i.e. label weighted by uncertainty score, e.g. 1 & 3(probably) -> 0.75)
         image_dir: default = 'images'. Will be append to the parent dir
@@ -744,19 +744,38 @@ class CUBDataset(Dataset):
         self.transform = transform
         self.concept_transform = concept_transform
         self.label_transform = label_transform
-        self.use_attr = use_attr
         self.no_img = no_img
         self.uncertain_label = uncertain_label
         self.image_dir = image_dir
         self.n_class_attr = n_class_attr
         self.root_dir = root_dir
         self.path_transform = path_transform
+        self.l_choice = defaultdict(bool)
+
+        if training:
+            random.seed(seed)
+            class_count = defaultdict(int)
+            for img_data in self.data:
+                class_count[img_data['class_label']] += 1
+
+            labeled_count = defaultdict(int)
+            for idx, img_data in enumerate(self.data):
+                class_label = img_data['class_label']
+                if labeled_count[class_label] < labeled_ratio * class_count[idx]:
+                    self.l_choice[idx] = True
+                    labeled_count[class_label] += 1
+                else:
+                    self.l_choice[idx] = False
+        else:
+            for idx in range(len(self.data)):
+                self.l_choice[idx] = True
 
     def __len__(self):
         return len(self.data)
 
     def __getitem__(self, idx):
         img_data = self.data[idx]
+        l = self.l_choice[idx]
         img_path = img_data['img_path']
         if self.path_transform is None:
             img_path = img_path.replace(
@@ -774,26 +793,23 @@ class CUBDataset(Dataset):
         if self.transform:
             img = self.transform(img)
 
-        if self.use_attr:
-            if self.uncertain_label:
-                attr_label = img_data['uncertain_attribute_label']
-            else:
-                attr_label = img_data['attribute_label']
-            if self.concept_transform is not None:
-                attr_label = self.concept_transform(attr_label)
-            if self.no_img:
-                if self.n_class_attr == 3:
-                    one_hot_attr_label = np.zeros(
-                        (len(SELECTED_CONCEPTS), self.n_class_attr)
-                    )
-                    one_hot_attr_label[np.arange(len(SELECTED_CONCEPTS)), attr_label] = 1
-                    return one_hot_attr_label, class_label
-                else:
-                    return attr_label, class_label
-            else:
-                return img, class_label, torch.FloatTensor(attr_label)
+        if self.uncertain_label:
+            attr_label = img_data['uncertain_attribute_label']
         else:
-            return img, class_label
+            attr_label = img_data['attribute_label']
+        if self.concept_transform is not None:
+            attr_label = self.concept_transform(attr_label)
+        if self.no_img:
+            if self.n_class_attr == 3:
+                one_hot_attr_label = np.zeros(
+                    (len(SELECTED_CONCEPTS), self.n_class_attr)
+                )
+                one_hot_attr_label[np.arange(len(SELECTED_CONCEPTS)), attr_label] = 1
+                return one_hot_attr_label, class_label, torch.tensor(l)
+            else:
+                return attr_label, class_label, torch.tensor(l)
+        else:
+            return img, class_label, torch.FloatTensor(attr_label), torch.tensor(l)
 
 
 class ImbalancedDatasetSampler(torch.utils.data.sampler.Sampler):
@@ -842,11 +858,11 @@ class ImbalancedDatasetSampler(torch.utils.data.sampler.Sampler):
 
 def load_data(
         pkl_paths,
-        use_attr,
         no_img,
         batch_size,
         labeled_ratio,
         seed=42,
+        training=False,
         uncertain_label=False,
         n_class_attr=2,
         image_dir='images',
@@ -898,8 +914,10 @@ def load_data(
             ])
 
     dataset = CUBDataset(
+        labeled_ratio=labeled_ratio,
+        seed=42,
+        training=training,
         pkl_file_paths=pkl_paths,
-        use_attr=use_attr,
         no_img=no_img,
         uncertain_label=uncertain_label,
         image_dir=image_dir,
@@ -923,8 +941,6 @@ def load_data(
         loader = DataLoader(dataset, batch_size=batch_size, shuffle=shuffle, drop_last=drop_last,
                             num_workers=num_workers)
     return loader
-
-
 
 
 def find_class_imbalance(pkl_file, multiple_attr=False, attr_idx=-1):
@@ -1068,8 +1084,8 @@ def generate_data(
         labeled_ratio=labeled_ratio,
         seed=seed,
         pkl_paths=[train_data_path],
-        use_attr=True,
         no_img=False,
+        training=True,
         batch_size=config['batch_size'],
         uncertain_label=False,
         n_class_attr=2,
@@ -1080,9 +1096,11 @@ def generate_data(
         concept_transform=concept_transform,
     )
     val_dl = load_data(
+        labeled_ratio=labeled_ratio,
+        seed=seed,
         pkl_paths=[val_data_path],
-        use_attr=True,
         no_img=False,
+        training=False,
         batch_size=config['batch_size'],
         uncertain_label=False,
         n_class_attr=2,
@@ -1094,9 +1112,11 @@ def generate_data(
     )
 
     test_dl = load_data(
+        labeled_ratio=labeled_ratio,
+        seed=seed,
         pkl_paths=[test_data_path],
-        use_attr=True,
         no_img=False,
+        training=False,
         batch_size=config['batch_size'],
         uncertain_label=False,
         n_class_attr=2,

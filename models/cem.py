@@ -281,6 +281,7 @@ class ConceptEmbeddingModel(ConceptBottleneckModel):
             intervention_idxs=None,
             c=None,
             y=None,
+            l=None,
             train=False,
             latent=None,
             competencies=None,

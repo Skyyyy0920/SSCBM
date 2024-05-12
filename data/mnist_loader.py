@@ -312,7 +312,7 @@ def load_mnist_addition(
     else:
         y_test = torch.LongTensor(y_test)
     c_test = torch.FloatTensor(c_test)
-    l_test = torch.ones_like(c_test, dtype=torch.bool)
+    l_test = torch.ones(len(c_test), dtype=torch.bool)
     test_data = torch.utils.data.TensorDataset(x_test, y_test, c_test, l_test)
     test_dl = DataLoader(test_data, batch_size=batch_size, num_workers=num_workers)
     if uncertain_width and (not even_concepts):
@@ -380,7 +380,7 @@ def load_mnist_addition(
         else:
             y_val = torch.LongTensor(y_val)
         c_val = torch.FloatTensor(c_val)
-        l_val = torch.ones_like(c_val, dtype=torch.bool)
+        l_val = torch.ones(len(c_val), dtype=torch.bool)
         val_data = torch.utils.data.TensorDataset(x_val, y_val, c_val, l_val)
         val_dl = DataLoader(val_data, batch_size=batch_size, num_workers=num_workers)
         if uncertain_width and (not even_concepts):
@@ -436,12 +436,6 @@ def load_mnist_addition(
         rand_indices = torch.randperm(len(class_indices))
         labeled_indices = class_indices[rand_indices[:num_labeled_per_class[class_label]]]
         l_train[labeled_indices] = True
-
-    num_unlabeled = torch.sum(l_train == 0).item()
-    num_labeled = torch.sum(l_train == 1).item()
-
-    print(f"Unlabeled samples: {num_unlabeled}")
-    print(f"Labeled samples: {num_labeled}")
 
     train_data = torch.utils.data.TensorDataset(x_train, y_train, c_train, l_train)
     train_dl = DataLoader(train_data, batch_size=batch_size, num_workers=num_workers)
