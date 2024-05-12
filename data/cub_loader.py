@@ -771,65 +771,6 @@ class CUBDataset(Dataset):
             for idx in range(len(self.data)):
                 self.l_choice[idx] = True
 
-        # for idx, img_data in enumerate(self.data):
-        #     if idx == 1:
-        #         img_path = img_data['img_path']
-        #         img_path = img_path.replace(
-        #             '/juice/scr/scr102/scr/thaonguyen/CUB_supervision/datasets/',
-        #             './data/CUB_200_2011/'
-        #         )
-        #         img1 = Image.open(img_path).convert('RGB')
-        #     if idx == 164:
-        #         img_path = img_data['img_path']
-        #         img_path = img_path.replace(
-        #             '/juice/scr/scr102/scr/thaonguyen/CUB_supervision/datasets/',
-        #             './data/CUB_200_2011/'
-        #         )
-        #         img2 = Image.open(img_path).convert('RGB')
-        #     if idx == 75:
-        #         img_path = img_data['img_path']
-        #         img_path = img_path.replace(
-        #             '/juice/scr/scr102/scr/thaonguyen/CUB_supervision/datasets/',
-        #             './data/CUB_200_2011/'
-        #         )
-        #         img3 = Image.open(img_path).convert('RGB')
-        #     if idx == 6:
-        #         img_path = img_data['img_path']
-        #         img_path = img_path.replace(
-        #             '/juice/scr/scr102/scr/thaonguyen/CUB_supervision/datasets/',
-        #             './data/CUB_200_2011/'
-        #         )
-        #         img4 = Image.open(img_path).convert('RGB')
-        #     else:
-        #         continue
-        #
-        # import matplotlib
-        # matplotlib.use('TkAgg')
-        # import matplotlib.pyplot as plt
-        #
-        # plt.figure(figsize=(10, 8))
-        #
-        # # 第一张图
-        # plt.subplot(2, 2, 1)
-        # plt.imshow(img1)
-        # plt.axis('off')
-        #
-        # # 第二张图
-        # plt.subplot(2, 2, 2)
-        # plt.imshow(img2)
-        # plt.axis('off')
-        #
-        # # 第三张图
-        # plt.subplot(2, 2, 3)
-        # plt.imshow(img3)
-        # plt.axis('off')
-        #
-        # plt.subplot(2, 2, 4)
-        # plt.imshow(img4)
-        # plt.axis('off')
-        #
-        # plt.show()
-
         self.neighbor = self.nearest_neighbors_resnet(k=3)
 
     def nearest_neighbors_resnet(self, k=3):
@@ -913,8 +854,6 @@ class CUBDataset(Dataset):
         return len(self.data)
 
     def __getitem__(self, idx):
-        if idx == 1:
-            print(f"getitem idx: {idx}, nei: {self.neighbor[idx]['indices']}")
         img_data = self.data[idx]
         l = self.l_choice[idx]
         neighbor_info = self.neighbor[idx]

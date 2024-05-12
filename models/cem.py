@@ -1,7 +1,8 @@
 import torch
+from torch import nn
 import numpy as np
 import pytorch_lightning as pl
-from torchvision.models import resnet50
+from torchvision.models import resnet50, resnet18, ResNet18_Weights
 
 from models.cbm import ConceptBottleneckModel
 import train.utils as utils
@@ -247,6 +248,9 @@ class ConceptEmbeddingModel(ConceptBottleneckModel):
         self.tau = tau
         self.use_concept_groups = use_concept_groups
 
+        self.resnet = resnet18(weights=ResNet18_Weights.DEFAULT)
+        self.fc = nn.Linear(512, self.emb_size)
+
     def _after_interventions(
             self,
             prob,
@@ -275,29 +279,32 @@ class ConceptEmbeddingModel(ConceptBottleneckModel):
         intervention_idxs = intervention_idxs.to(prob.device)
         return prob * (1 - intervention_idxs) + intervention_idxs * c_true, intervention_idxs
 
+    def unlabeled_image_encoder(self, x):
+        x = self.resnet.conv1(x)
+        x = self.resnet.bn1(x)
+        x = self.resnet.relu(x)
+        x = self.resnet.maxpool(x)
+
+        x = self.resnet.layer1(x)
+        x = self.resnet.layer2(x)
+        x = self.resnet.layer3(x)
+        x = self.resnet.layer4(x)
+        x = x.transpose(1, 3)
+        x = self.fc(x)
+        return x
+
     def _forward(
             self,
             x,
-            intervention_idxs=None,
             c=None,
             y=None,
             l=None,
             train=False,
             latent=None,
+            intervention_idxs=None,
             competencies=None,
             prev_interventions=None,
-            output_embeddings=False,
-            output_latent=None,
-            output_interventions=None,
     ):
-        output_interventions = (
-            output_interventions if output_interventions is not None
-            else self.output_interventions
-        )
-        output_latent = (
-            output_latent if output_latent is not None
-            else self.output_latent
-        )
         if latent is None:
             pre_c = self.pre_concept_model(x)
             contexts = []
@@ -365,25 +372,21 @@ class ConceptEmbeddingModel(ConceptBottleneckModel):
             competencies=competencies,
         )
         # Then time to mix!
-        c_pred = (
+        c_embedding = (
                 contexts[:, :, :self.emb_size] * torch.unsqueeze(probs, dim=-1) +
                 contexts[:, :, self.emb_size:] * (1 - torch.unsqueeze(probs, dim=-1))
         )
-        c_pred = c_pred.view((-1, self.emb_size * self.n_concepts))
+        c_pred = c_embedding.view((-1, self.emb_size * self.n_concepts))
         y = self.c2y_model(c_pred)
-        tail_results = []
-        if output_interventions:
-            if (
-                    (intervention_idxs is not None) and
-                    isinstance(intervention_idxs, np.ndarray)
-            ):
-                intervention_idxs = torch.FloatTensor(
-                    intervention_idxs
-                ).to(x.device)
-            tail_results.append(intervention_idxs)
-        if output_latent:
-            tail_results.append(latent)
-        if output_embeddings:
-            tail_results.append(contexts[:, :, :self.emb_size])
-            tail_results.append(contexts[:, :, self.emb_size:])
-        return tuple([c_sem, c_pred, y] + tail_results)
+        image_feature = self.unlabeled_image_encoder(x)
+
+        heatmap = []
+        for i in range(len(image_feature)):
+            heatmap.append(torch.matmul(image_feature[i], c_embedding[i].transpose(0, 1)))
+        heatmap = torch.stack(heatmap)
+
+        print("image_feature", image_feature.shape)
+        print(f"c_embedding: {c_embedding.shape}")
+        print(f"heatmap: {heatmap.shape}")
+
+        return c_sem, c_pred, c_embedding, y, heatmap
