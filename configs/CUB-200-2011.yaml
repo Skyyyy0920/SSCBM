@@ -47,13 +47,13 @@ save_model: True
 patience: 15
 emb_size: 16
 extra_dims: 0
-concept_loss_weight_labeled: 5
-concept_loss_weight_unlabeled: 5
+concept_loss_weight_labeled: 0.25
+concept_loss_weight_unlabeled: 0.25
 learning_rate: 0.01
 weight_decay: 0.000004
 weight_loss: True
 c_extractor_arch: resnet34
-optimizer: sgd
+optimizer: adam
 bool: False
 early_stopping_monitor: val_loss
 early_stopping_mode: min

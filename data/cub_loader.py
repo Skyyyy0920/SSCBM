@@ -2,6 +2,7 @@ import os
 import torch
 import random
 import pickle
+import logging
 import numpy as np
 import torchvision.transforms as transforms
 from pytorch_lightning import seed_everything
@@ -752,6 +753,8 @@ class CUBDataset(Dataset):
         self.root_dir = root_dir
         self.path_transform = path_transform
         self.l_choice = defaultdict(bool)
+
+        logging.info(f"labeled ratio: {labeled_ratio}")
 
         if training:
             random.seed(seed)

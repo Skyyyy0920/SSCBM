@@ -6,7 +6,7 @@ import joblib
 import logging
 import numpy as np
 import pytorch_lightning as pl
-from pytorch_lightning import seed_everything
+from pytorch_lightning import seed_everything, loggers
 from pytorch_lightning.callbacks.early_stopping import EarlyStopping
 
 import cem.train.utils as utils
@@ -143,8 +143,8 @@ def train_end_to_end_model(
         accelerator=accelerator,
         devices=devices,
         max_epochs=config['max_epochs'],
-        check_val_every_n_epoch=config.get("check_val_every_n_epoch", 5),
-        callbacks=callbacks,
+        check_val_every_n_epoch=config.get("check_val_every_n_epoch", 10),
+        # callbacks=callbacks,
         logger=logger or False,
         enable_checkpointing=enable_checkpointing,
         gradient_clip_val=gradient_clip_val,
@@ -217,7 +217,10 @@ def train_end_to_end_model(
 
 def update_statistics(
         aggregate_results,
+        run_config,
         test_results,
+        run_name,
+        model=None,
         prefix='',
 ):
     for key, val in test_results.items():

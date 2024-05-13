@@ -416,7 +416,6 @@ def load_trained_model(
             c2y_model=c2y_model,
         )
 
-
     else:
         model = construct_model(
             n_concepts=n_concepts,

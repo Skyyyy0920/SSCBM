@@ -73,11 +73,11 @@ def get_args():
 
     parser.add_argument('--activation_freq',
                         type=int,
-                        default=20,
+                        default=0,
                         help='How frequently in terms of epochs should we store the embedding activations')
     parser.add_argument('--single_frequency_epochs',
                         type=int,
-                        default=-1,
+                        default=0,
                         help='Store the embedding every epoch or not')
 
     args = parser.parse_args()

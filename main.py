@@ -4,6 +4,7 @@ from collections import defaultdict
 
 from utils import *
 from train.training import *
+import cem.train.evaluate as evaluation
 from configs.basic_config import *
 import data.cub_loader as cub_data_module
 import data.mnist_loader as mnist_data_module
@@ -113,10 +114,31 @@ if __name__ == '__main__':
 
             update_statistics(
                 aggregate_results=results[run_name],
-                test_results=model_results,
+                run_config=run_config,
+                model=model,
+                test_results=evaluation.evaluate_representation_metrics(
+                    config=run_config,
+                    n_concepts=run_config['n_concepts'],
+                    n_tasks=run_config['n_tasks'],
+                    test_dl=test_dl,
+                    run_name=run_name,
+                    imbalance=imbalance,
+                    result_dir=save_dir,
+                    task_class_weights=task_class_weights,
+                    accelerator=args.device,
+                    devices='auto',
+                    seed=42,
+                    old_results=old_results,
+                ),
+                run_name=run_name,
                 prefix="",
             )
             results[run_name][f'num_trainable_params'] = \
                 sum(p.numel() for p in model.parameters() if p.requires_grad)
             results[run_name][f'num_non_trainable_params'] = \
                 sum(p.numel() for p in model.parameters() if not p.requires_grad)
+
+    with open(f'{save_dir}/results.txt', 'w') as f:
+        for key, value in results.items():
+            f.write(f"{key}: {value}\n")
+

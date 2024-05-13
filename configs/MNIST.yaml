@@ -69,7 +69,7 @@ concept_loss_weight_unlabeled: 10
 learning_rate: 0.001
 weight_decay: 0.000004
 c_extractor_arch: mnist_extractor
-optimizer: sgd
+optimizer: adam
 max_epochs: 300
 bool: False
 early_stopping_monitor: val_loss
