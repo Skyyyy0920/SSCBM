@@ -4,7 +4,7 @@ from collections import defaultdict
 
 from utils import *
 from train.training import *
-import cem.train.evaluate as evaluation
+from train.evaluate import *
 from configs.basic_config import *
 import data.cub_loader as cub_data_module
 import data.mnist_loader as mnist_data_module
@@ -116,7 +116,7 @@ if __name__ == '__main__':
                 aggregate_results=results[run_name],
                 run_config=run_config,
                 model=model,
-                test_results=evaluation.evaluate_representation_metrics(
+                test_results=evaluate_representation_metrics(
                     config=run_config,
                     n_concepts=run_config['n_concepts'],
                     n_tasks=run_config['n_tasks'],
@@ -138,7 +138,8 @@ if __name__ == '__main__':
             results[run_name][f'num_non_trainable_params'] = \
                 sum(p.numel() for p in model.parameters() if not p.requires_grad)
 
-    with open(f'{save_dir}/results.txt', 'w') as f:
-        for key, value in results.items():
-            f.write(f"{key}: {value}\n")
+        with open(f'{save_dir}/results.txt', 'w') as f:
+            for key, value in results[run_name].items():
+                f.write(f"{key}: {value}\n")
 
+    print(f"========================finish========================")

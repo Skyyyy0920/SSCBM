@@ -468,10 +468,6 @@ class ConceptBottleneckModel(pl.LightningModule):
         concept_loss_unlabeled = self.loss_concept_unlabeled(c_pred_unlabeled[~l], c_pseudo[~l])
         concept_loss_scalar_unlabeled = concept_loss_unlabeled.detach()
 
-        if train and batch_idx == 5:
-            print(f"labeled ratio: {len(c[l]) / (len(c))}")
-            print(f"unlabeled ratio: {len(c[~l]) / (len(c))}")
-
         loss = task_loss + \
                self.concept_loss_weight_labeled * concept_loss_labeled + \
                self.concept_loss_weight_unlabeled * concept_loss_unlabeled
@@ -523,6 +519,7 @@ class ConceptBottleneckModel(pl.LightningModule):
                 )
             else:
                 prog_bar = (
+                        ("c_accuracy" in name) or
                         ("c_auc" in name) or
                         ("y_accuracy" in name) or
                         ("mask_accuracy" in name) or

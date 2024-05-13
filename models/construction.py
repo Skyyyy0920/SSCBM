@@ -321,10 +321,7 @@ def load_trained_model(
         sequential = True
     elif config['architecture'].startswith("Independent"):
         independent = True
-    model_saved_path = os.path.join(
-        result_dir or ".",
-        f'{full_run_name}.pt'
-    )
+    model_saved_path = os.path.join(result_dir, f'test.pt')
 
     if (
             ((intervention_policy is not None) or intervene) and

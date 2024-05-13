@@ -223,5 +223,6 @@ def update_statistics(
         model=None,
         prefix='',
 ):
+    print(test_results)
     for key, val in test_results.items():
         aggregate_results[prefix + key] = val
