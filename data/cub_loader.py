@@ -858,10 +858,10 @@ class CUBDataset(Dataset):
         l = self.l_choice[idx]
         neighbor_info = self.neighbor[idx]
         neighbor_indices = neighbor_info['indices']
-        nbr_class = []
+        nbr_concepts = []
         for idx in neighbor_indices:
-            nbr_class.append(self.data[idx]['class_label'])
-        nbr_class = torch.tensor(nbr_class)
+            nbr_concepts.append(self.data[idx]['attribute_label'])
+        nbr_concepts = torch.tensor(nbr_concepts)
         nbr_weight = torch.from_numpy(neighbor_info['weights'])
 
         img_path = img_data['img_path']
@@ -889,11 +889,11 @@ class CUBDataset(Dataset):
                     (len(SELECTED_CONCEPTS), self.n_class_attr)
                 )
                 one_hot_attr_label[np.arange(len(SELECTED_CONCEPTS)), attr_label] = 1
-                return one_hot_attr_label, class_label, torch.tensor(l), nbr_class, nbr_weight
+                return one_hot_attr_label, class_label, torch.tensor(l), nbr_concepts, nbr_weight
             else:
-                return attr_label, class_label, torch.tensor(l), nbr_class, nbr_weight
+                return attr_label, class_label, torch.tensor(l), nbr_concepts, nbr_weight
         else:
-            return img, class_label, torch.FloatTensor(attr_label), torch.tensor(l), nbr_class, nbr_weight
+            return img, class_label, torch.FloatTensor(attr_label), torch.tensor(l), nbr_concepts, nbr_weight
 
 
 class ImbalancedDatasetSampler(torch.utils.data.sampler.Sampler):

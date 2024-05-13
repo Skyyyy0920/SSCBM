@@ -802,11 +802,11 @@ class IntAwareConceptBottleneckModel(ConceptBottleneckModel):
         return intervention_loss, intervention_task_loss, int_mask_accuracy
 
     def _compute_concept_loss(self, c, c_pred):
-        if self.concept_loss_weight != 0:
+        if self.concept_loss_weight_labeled != 0:
             # We separate this so that we are allowed to
             # use arbitrary activations (i.e., not necessarily in [0, 1])
             # whenever no concept supervision is provided
-            concept_loss = self.loss_concept(c_pred, c)
+            concept_loss = self.loss_concept_labeled(c_pred, c)
         else:
             concept_loss = 0.0
         return concept_loss
@@ -891,13 +891,13 @@ class IntAwareConceptBottleneckModel(ConceptBottleneckModel):
             c_pred=c_sem,
         )
         if isinstance(concept_loss, (float, int)):
-            concept_loss_scalar = self.concept_loss_weight * concept_loss
+            concept_loss_scalar = self.concept_loss_weight_labeled * concept_loss
         else:
             concept_loss_scalar = \
-                self.concept_loss_weight * concept_loss.detach()
+                self.concept_loss_weight_labeled * concept_loss.detach()
 
         loss = (
-                self.concept_loss_weight * concept_loss +
+                self.concept_loss_weight_labeled * concept_loss +
                 self.intervention_weight * intervention_loss +
                 self.intervention_task_loss_weight * intervention_task_loss
         )

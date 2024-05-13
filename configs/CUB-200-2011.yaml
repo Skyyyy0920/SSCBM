@@ -1,7 +1,7 @@
 # Dataset Configuration
 dataset_config:
   dataset: "CUB-200-2011"
-  num_workers: 0
+  num_workers: 64
   batch_size: 256
 
   # DATASET VARIABLES
@@ -47,7 +47,8 @@ save_model: True
 patience: 15
 emb_size: 16
 extra_dims: 0
-concept_loss_weight: 5
+concept_loss_weight_labeled: 5
+concept_loss_weight_unlabeled: 5
 learning_rate: 0.01
 weight_decay: 0.000004
 weight_loss: True

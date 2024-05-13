@@ -1,6 +1,5 @@
 import torch
 from torch import nn
-import numpy as np
 import pytorch_lightning as pl
 from torchvision.models import resnet50, resnet18, ResNet18_Weights
 
@@ -17,7 +16,8 @@ class ConceptEmbeddingModel(ConceptBottleneckModel):
             training_intervention_prob=0.25,
             embedding_activation="leakyrelu",
             shared_prob_gen=True,
-            concept_loss_weight=1,
+            concept_loss_weight_labeled=1,
+            concept_loss_weight_unlabeled=5,
             task_loss_weight=1,
 
             c2y_model=None,
@@ -41,83 +41,6 @@ class ConceptEmbeddingModel(ConceptBottleneckModel):
 
             top_k_accuracy=None,
     ):
-        """
-        Constructs a Concept Embedding Model (CEM) as defined by
-        Espinosa Zarlenga et al. 2022.
-
-        :param int n_concepts: The number of concepts given at training time.
-        :param int n_tasks: The number of output classes of the CEM.
-        :param int emb_size: The size of each concept embedding. Defaults to 16.
-        :param float training_intervention_prob: RandInt probability. Defaults
-            to 0.25.
-        :param str embedding_activation: A valid nonlinearity name to use for the
-            generated embeddings. It must be one of [None, "sigmoid", "relu",
-            "leakyrelu"] and defaults to "leakyrelu".
-        :param Bool shared_prob_gen: Whether or not weights are shared across
-            all probability generators. Defaults to True.
-        :param float concept_loss_weight: Weight to be used for the final loss'
-            component corresponding to the concept classification loss. Default
-            is 0.01.
-        :param float task_loss_weight: Weight to be used for the final loss'
-            component corresponding to the output task classification loss.
-            Default is 1.
-
-        :param Pytorch.Module c2y_model:  A valid pytorch Module used to map the
-            CEM's bottleneck (with size n_concepts * emb_size) to `n_tasks`
-            output activations (i.e., the output of the CEM).
-            If not given, then a simple leaky-ReLU MLP, whose hidden
-            layers have sizes `c2y_layers`, will be used.
-        :param List[int] c2y_layers: List of integers defining the size of the
-            hidden layers to be used in the MLP to predict classes from the
-            bottleneck if c2y_model was NOT provided. If not given, then we will
-            use a simple linear layer to map the bottleneck to the output classes.
-        :param Fun[(int), Pytorch.Module] c_extractor_arch: A generator function
-            for the latent code generator model that takes as an input the size
-            of the latent code before the concept embedding generators act (
-            using an argument called `output_dim`) and returns a valid Pytorch
-            Module that maps this CEM's inputs to the latent space of the
-            requested size.
-
-        :param str optimizer:  The name of the optimizer to use. Must be one of
-            `adam` or `sgd`. Default is `adam`.
-        :param float momentum: Momentum used for optimization. Default is 0.9.
-        :param float learning_rate:  Learning rate used for optimization.
-            Default is 0.01.
-        :param float weight_decay: The weight decay factor used during
-            optimization. Default is 4e-05.
-        :param List[float] weight_loss: Either None or a list with n_concepts
-            elements indicating the weights assigned to each predicted concept
-            during the loss computation. Could be used to improve
-            performance/fairness in imbalanced datasets.
-        :param List[float] task_class_weights: Either None or a list with
-            n_tasks elements indicating the weights assigned to each output
-            class during the loss computation. Could be used to improve
-            performance/fairness in imbalanced datasets.
-
-        :param List[float] active_intervention_values: A list of n_concepts
-            values to use when positively intervening in a given concept (i.e.,
-            setting concept c_i to 1 would imply setting its corresponding
-            predicted concept to active_intervention_values[i]). If not given,
-            then we will assume that we use `1` for all concepts. This
-            parameter is important when intervening in CEMs that do not have
-            sigmoidal concepts, as the intervention thresholds must then be
-            inferred from their empirical training distribution.
-        :param List[float] inactive_intervention_values: A list of n_concepts
-            values to use when negatively intervening in a given concept (i.e.,
-            setting concept c_i to 0 would imply setting its corresponding
-            predicted concept to inactive_intervention_values[i]). If not given,
-            then we will assume that we use `0` for all concepts.
-        :param Callable[(np.ndarray, np.ndarray, np.ndarray), np.ndarray] intervention_policy:
-            An optional intervention policy to be used when intervening on a
-            test batch sample x (first argument), with corresponding true
-            concepts c (second argument), and true labels y (third argument).
-            The policy must produce as an output a list of concept indices to
-            intervene (in batch form) or a batch of binary masks indicating
-            which concepts we will intervene on.
-
-        :param List[int] top_k_accuracy: List of top k values to report accuracy
-            for during training/testing when the number of tasks is high.
-        """
         pl.LightningModule.__init__(self)
         self.n_concepts = n_concepts
         self.output_interventions = output_interventions
@@ -201,21 +124,13 @@ class ConceptEmbeddingModel(ConceptBottleneckModel):
                         torch.nn.ReLU(),
                     ])
                 )
-            if self.shared_prob_gen and (
-                    len(self.concept_prob_generators) == 0
-            ):
+            if self.shared_prob_gen and len(self.concept_prob_generators) == 0:
                 # Then we will use one and only one probability generator which
                 # will be shared among all concepts. This will force concept
                 # embedding vectors to be pushed into the same latent space
-                self.concept_prob_generators.append(torch.nn.Linear(
-                    2 * emb_size,
-                    1,
-                ))
+                self.concept_prob_generators.append(torch.nn.Linear(2 * emb_size, 1))
             elif not self.shared_prob_gen:
-                self.concept_prob_generators.append(torch.nn.Linear(
-                    2 * emb_size,
-                    1,
-                ))
+                self.concept_prob_generators.append(torch.nn.Linear(2 * emb_size, 1))
         if c2y_model is None:
             # Else we construct it here directly
             units = [
@@ -229,16 +144,18 @@ class ConceptEmbeddingModel(ConceptBottleneckModel):
             self.c2y_model = torch.nn.Sequential(*layers)
         else:
             self.c2y_model = c2y_model
-        self.sig = torch.nn.Sigmoid()
+        self.sigmoid = torch.nn.Sigmoid()
 
-        self.loss_concept = torch.nn.BCELoss(weight=weight_loss)
+        self.loss_concept_labeled = torch.nn.BCELoss(weight=weight_loss)
+        self.loss_concept_unlabeled = torch.nn.BCELoss(weight=weight_loss)
         self.loss_task = (
             torch.nn.CrossEntropyLoss(weight=task_class_weights)
             if n_tasks > 1 else torch.nn.BCEWithLogitsLoss(
                 weight=task_class_weights
             )
         )
-        self.concept_loss_weight = concept_loss_weight
+        self.concept_loss_weight_labeled = concept_loss_weight_labeled
+        self.concept_loss_weight_unlabeled = concept_loss_weight_unlabeled
         self.momentum = momentum
         self.learning_rate = learning_rate
         self.weight_decay = weight_decay
@@ -250,6 +167,8 @@ class ConceptEmbeddingModel(ConceptBottleneckModel):
 
         self.resnet = resnet18(weights=ResNet18_Weights.DEFAULT)
         self.fc = nn.Linear(512, self.emb_size)
+
+        self.pooling = nn.AdaptiveAvgPool2d(1)
 
     def _after_interventions(
             self,
@@ -319,7 +238,7 @@ class ConceptEmbeddingModel(ConceptBottleneckModel):
                 context = context_gen(pre_c)
                 prob = prob_gen(context)
                 contexts.append(torch.unsqueeze(context, dim=1))
-                c_sem.append(self.sig(prob))
+                c_sem.append(self.sigmoid(prob))
             c_sem = torch.cat(c_sem, axis=-1)
             contexts = torch.cat(contexts, axis=1)
             latent = contexts, c_sem
@@ -380,13 +299,14 @@ class ConceptEmbeddingModel(ConceptBottleneckModel):
         y = self.c2y_model(c_pred)
         image_feature = self.unlabeled_image_encoder(x)
 
+        # image_feature: [batch_size, H, W, D] (D is concept embedding size)
+        # c_embedding: [batch_size, n_concepts, D]
+        # heatmap: [batch_size, n_concepts, h, w]
         heatmap = []
         for i in range(len(image_feature)):
             heatmap.append(torch.matmul(image_feature[i], c_embedding[i].transpose(0, 1)))
-        heatmap = torch.stack(heatmap)
+        heatmap = torch.stack(heatmap).permute(0, 3, 1, 2)
+        c_pred_unlabeled = self.pooling(heatmap).squeeze()
+        c_pred_unlabeled = self.sigmoid(c_pred_unlabeled)
 
-        print("image_feature", image_feature.shape)
-        print(f"c_embedding: {c_embedding.shape}")
-        print(f"heatmap: {heatmap.shape}")
-
-        return c_sem, c_pred, c_embedding, y, heatmap
+        return c_sem, c_pred, c_pred_unlabeled, y

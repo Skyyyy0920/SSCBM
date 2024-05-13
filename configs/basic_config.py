@@ -2,6 +2,7 @@ import torch
 import argparse
 
 device = 'gpu' if torch.cuda.is_available() else 'cpu'
+# device = 'cpu'
 
 
 def get_args():

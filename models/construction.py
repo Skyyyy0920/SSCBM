@@ -187,7 +187,8 @@ def construct_model(
             if (task_class_weights is not None)
             else None
         ),
-        concept_loss_weight=config['concept_loss_weight'],
+        concept_loss_weight_labeled=config['concept_loss_weight_labeled'],
+        concept_loss_weight_unlabeled=config['concept_loss_weight_unlabeled'],
         task_loss_weight=task_loss_weight,
         learning_rate=config['learning_rate'],
         weight_decay=config['weight_decay'],

@@ -2,7 +2,7 @@
 dataset_config:
   dataset: MNIST
   root_dir: data/
-  num_workers: 8
+  num_workers: 64
   batch_size: 2048
   num_operands: 12
   selected_digits:
@@ -64,7 +64,8 @@ save_model: True
 patience: 5
 emb_size: 16
 extra_dims: 0
-concept_loss_weight: 10
+concept_loss_weight_labeled: 10
+concept_loss_weight_unlabeled: 10
 learning_rate: 0.001
 weight_decay: 0.000004
 c_extractor_arch: mnist_extractor
