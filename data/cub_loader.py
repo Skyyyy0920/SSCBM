@@ -754,8 +754,6 @@ class CUBDataset(Dataset):
         self.path_transform = path_transform
         self.l_choice = defaultdict(bool)
 
-        logging.info(f"labeled ratio: {labeled_ratio}")
-
         if training:
             random.seed(seed)
             class_count = defaultdict(int)
@@ -765,7 +763,7 @@ class CUBDataset(Dataset):
             labeled_count = defaultdict(int)
             for idx, img_data in enumerate(self.data):
                 class_label = img_data['class_label']
-                if labeled_count[class_label] < labeled_ratio * class_count[idx]:
+                if labeled_count[class_label] < labeled_ratio * class_count[class_label]:
                     self.l_choice[idx] = True
                     labeled_count[class_label] += 1
                 else:
@@ -773,6 +771,12 @@ class CUBDataset(Dataset):
         else:
             for idx in range(len(self.data)):
                 self.l_choice[idx] = True
+
+        count = 0
+        for idx in range(len(self.l_choice)):
+            if self.l_choice[idx]:
+                count += 1
+        logging.info(f"actual labeled ratio: {count / len(self.l_choice)}")
 
         self.neighbor = self.nearest_neighbors_resnet(k=3)
 

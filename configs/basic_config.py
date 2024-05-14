@@ -2,6 +2,8 @@ import torch
 import argparse
 
 device = 'gpu' if torch.cuda.is_available() else 'cpu'
+
+
 # device = 'cpu'
 
 
@@ -34,32 +36,6 @@ def get_args():
                         type=str,
                         default=device,
                         help='Running on which device')
-
-    # Training hyper-parameters
-    parser.add_argument('--batch_size',
-                        type=int,
-                        default=1024,
-                        help='Batch size')  # 1024
-    parser.add_argument('--accumulation_steps',
-                        type=int,
-                        default=32,
-                        help='Gradient accumulation to solve the GPU memory problem')
-    parser.add_argument('--epochs',
-                        type=int,
-                        default=50,
-                        help='Number of epochs to train')
-    parser.add_argument('--lr',
-                        type=float,
-                        default=1e-3,
-                        help='Initial learning rate')
-    parser.add_argument('--weight_decay',
-                        type=float,
-                        default=1e-4,
-                        help='Weight decay (L2 loss on parameters)')
-    parser.add_argument('--patience',
-                        type=int,
-                        default=4,
-                        help='the patience for early stopping')
 
     # Experiment configuration
     parser.add_argument('--port',

@@ -8,6 +8,11 @@ import itertools
 import numpy as np
 from pathlib import Path
 
+import data.cub_loader as cub_data_module
+import data.mnist_loader as mnist_data_module
+import data.celeba_loader as celeba_data_module
+from data.synthetic_loader import get_synthetic_data, get_synthetic_num_features, get_synthetic_extractor_arch
+
 os.environ["CUDA_VISIBLE_DEVICES"] = "0"
 
 
@@ -83,6 +88,74 @@ def update_config_with_dataset(
             task_class_weights = np.array([attribute_count[0] / attribute_count[1]])
 
     return task_class_weights
+
+
+def generate_dataset_and_update_config(experiment_config, args):
+    dataset_config = experiment_config['dataset_config']
+    if args.dataset == "CUB-200-2011":
+        data_module = cub_data_module
+    elif args.dataset == "CelebA":
+        data_module = celeba_data_module
+    elif args.dataset == "MNIST":
+        data_module = mnist_data_module
+    elif args.dataset in ["XOR", "vector", "Dot", "Trigonometric"]:
+        data_module = get_synthetic_data(dataset_config["dataset"])
+    else:
+        raise ValueError(f"Unsupported dataset {dataset_config['dataset']}!")
+
+    if experiment_config['c_extractor_arch'] == "mnist_extractor":
+        num_operands = dataset_config.get('num_operands', 32)
+        experiment_config["c_extractor_arch"] = mnist_data_module.get_mnist_extractor_arch(
+            input_shape=(dataset_config.get('batch_size', 512), num_operands, 28, 28),
+            num_operands=num_operands,
+        )
+    elif experiment_config['c_extractor_arch'] == 'synth_extractor':
+        input_features = get_synthetic_num_features(dataset_config["dataset"])
+        experiment_config["c_extractor_arch"] = get_synthetic_extractor_arch(input_features)
+
+    train_dl, val_dl, test_dl, imbalance, (n_concepts, n_tasks, concept_map) = data_module.generate_data(
+        config=dataset_config,
+        seed=42,
+        labeled_ratio=experiment_config['labeled_ratio'],
+    )
+
+    intervention_config = experiment_config.get('intervention_config', {})
+    acquisition_costs = None
+    if concept_map is not None:
+        intervened_groups = list(
+            range(
+                0,
+                len(concept_map) + 1,
+                intervention_config.get('intervention_freq', 1),
+            )
+        )
+    else:
+        intervened_groups = list(
+            range(
+                0,
+                n_concepts + 1,
+                intervention_config.get('intervention_freq', 1),
+            )
+        )
+
+    task_class_weights = update_config_with_dataset(
+        config=experiment_config,
+        train_dl=train_dl,
+        n_concepts=n_concepts,
+        n_tasks=n_tasks,
+        concept_map=concept_map,
+    )
+
+    return (
+        train_dl,
+        val_dl,
+        test_dl,
+        imbalance,
+        concept_map,
+        intervened_groups,
+        task_class_weights,
+        acquisition_costs,
+    )
 
 
 def generate_hyper_param_configs(config):

@@ -1,4 +1,5 @@
 import torch
+import logging
 import sklearn.metrics
 import pytorch_lightning as pl
 from torchvision.models import resnet50, densenet121
@@ -390,7 +391,7 @@ class ConceptBottleneckModel(pl.LightningModule):
         else:
             y = self.c2y_model(c_pred)
 
-        return c_sem, c_pred, c_sem, y  # TODO
+        return c_sem, c_pred, c_sem, y
 
     def forward(
             self,
@@ -475,14 +476,14 @@ class ConceptBottleneckModel(pl.LightningModule):
         # compute accuracy
         (c_acc, c_auc, c_f1), (y_acc, y_auc, y_f1) = compute_accuracy(c_sem, y_pred, c, y)
         result = {
-            "c_accuracy": c_acc,
+            "c_acc": c_acc,
             "c_auc": c_auc,
             "c_f1": c_f1,
-            "y_accuracy": y_acc,
+            "y_acc": y_acc,
             "y_auc": y_auc,
             "y_f1": y_f1,
-            "concept_loss_labeled": concept_loss_scalar_labeled,
-            "concept_loss_unlabeled": concept_loss_scalar_unlabeled,
+            "c_loss_labeled": concept_loss_scalar_labeled,
+            "c_loss_unlabeled": concept_loss_scalar_unlabeled,
             "task_loss": task_loss_scalar,
             "loss": loss.detach(),
             "avg_c_y_acc": (c_acc + y_acc) / 2,
@@ -508,39 +509,24 @@ class ConceptBottleneckModel(pl.LightningModule):
         return loss, result
 
     def training_step(self, batch, batch_idx):
+        if batch_idx == 0:
+            logging.info(f"================================Epoch {self.current_epoch}===============================")
         loss, result = self._run_step(batch, batch_idx, train=True)
         for name, val in result.items():
-            if self.n_tasks <= 2:
-                prog_bar = (
-                        ("auc" in name) or
-                        ("mask_accuracy" in name) or
-                        ("current_steps" in name) or
-                        ("num_rollouts" in name)
-                )
-            else:
-                prog_bar = (
-                        ("c_accuracy" in name) or
-                        ("c_auc" in name) or
-                        ("y_accuracy" in name) or
-                        ("mask_accuracy" in name) or
-                        ("current_steps" in name) or
-                        ("num_rollouts" in name) or
-                        ("concept_loss_labeled" in name) or
-                        ("concept_loss_unlabeled" in name) or
-                        ("task_loss" in name)
-                )
-            self.log(name, val, prog_bar=prog_bar)
+            if name in ['c_f1', 'y_auc', 'avg_c_y_acc', 'y_f1']:
+                continue
+            self.log(name, val, prog_bar=True)
         return {
             "loss": loss,
             "log": {
-                "c_accuracy": result['c_accuracy'],
+                "c_accuracy": result['c_acc'],
                 "c_auc": result['c_auc'],
                 "c_f1": result['c_f1'],
-                "y_accuracy": result['y_accuracy'],
+                "y_accuracy": result['y_acc'],
                 "y_auc": result['y_auc'],
                 "y_f1": result['y_f1'],
-                "concept_loss_labeled": result['concept_loss_labeled'],
-                "concept_loss_unlabeled": result['concept_loss_unlabeled'],
+                "concept_loss_labeled": result['c_loss_labeled'],
+                "concept_loss_unlabeled": result['c_loss_unlabeled'],
                 "task_loss": result['task_loss'],
                 "loss": result['loss'],
                 "avg_c_y_acc": result['avg_c_y_acc'],

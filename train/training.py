@@ -32,8 +32,8 @@ def _evaluate_cbm(
         def _inner_call():
             [eval_results] = trainer.test(model, current_dl)
             output = [
-                eval_results[f"test_c_accuracy"],
-                eval_results[f"test_y_accuracy"],
+                eval_results[f"test_c_acc"],
+                eval_results[f"test_y_acc"],
                 eval_results[f"test_c_auc"],
                 eval_results[f"test_y_auc"],
                 eval_results[f"test_c_f1"],
@@ -42,9 +42,7 @@ def _evaluate_cbm(
             top_k_vals = []
             for key, val in eval_results.items():
                 if f"test_y_top" in key:
-                    top_k = int(
-                        key[len(f"test_y_top_"):-len("_accuracy")]
-                    )
+                    top_k = int(key[len(f"test_y_top_"):-len("_accuracy")])
                     top_k_vals.append((top_k, val))
             output += list(map(
                 lambda x: x[1],
@@ -144,7 +142,7 @@ def train_end_to_end_model(
         devices=devices,
         max_epochs=config['max_epochs'],
         check_val_every_n_epoch=config.get("check_val_every_n_epoch", 10),
-        # callbacks=callbacks,
+        callbacks=callbacks,
         logger=logger or False,
         enable_checkpointing=enable_checkpointing,
         gradient_clip_val=gradient_clip_val,
