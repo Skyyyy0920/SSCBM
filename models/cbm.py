@@ -146,7 +146,11 @@ class ConceptBottleneckModel(pl.LightningModule):
         self.use_concept_groups = use_concept_groups
 
     def _unpack_batch(self, batch):
-        x, y, c, l, nbr_y, nbr_w = batch[0], batch[1], batch[2], batch[3], batch[4], batch[5]
+        if len(batch) <= 5:
+            x, y, c = batch[0], batch[1], batch[2]
+            l, nbr_y, nbr_w = None, None, None
+        else:
+            x, y, c, l, nbr_y, nbr_w = batch
         if len(batch) > 6:
             competencies = batch[6]
         else:

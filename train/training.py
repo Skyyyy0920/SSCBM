@@ -142,7 +142,7 @@ def train_end_to_end_model(
         devices=devices,
         max_epochs=config['max_epochs'],
         check_val_every_n_epoch=config.get("check_val_every_n_epoch", 10),
-        callbacks=callbacks,
+        # callbacks=callbacks,
         logger=logger or False,
         enable_checkpointing=enable_checkpointing,
         gradient_clip_val=gradient_clip_val,

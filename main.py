@@ -103,7 +103,7 @@ if __name__ == '__main__':
                     intervened_groups=intervened_groups,
                     accelerator=args.device,
                     devices='auto',
-                    split=None,
+                    split=0,
                     rerun=False,
                     old_results=old_results,
                     group_level_competencies=intervention_config.get("group_level_competencies", False),

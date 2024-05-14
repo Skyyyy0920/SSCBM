@@ -45,16 +45,16 @@ run_cas: False
 run_nis: True
 run_ois: True
 
-max_epochs: 300
+max_epochs: 50
 top_k_accuracy: null
 save_model: True
 patience: 15
 emb_size: 16
 extra_dims: 0
-concept_loss_weight_labeled: 0.2
-concept_loss_weight_unlabeled: 0.2
+concept_loss_weight_labeled: 0.5
+concept_loss_weight_unlabeled: 0.5
 learning_rate: 0.01
-weight_decay: 0.000004
+weight_decay: 0.0005
 weight_loss: True
 c_extractor_arch: resnet34
 optimizer: sgd
@@ -66,7 +66,7 @@ momentum: 0.9
 sigmoidal_prob: False
 training_intervention_prob: 0.25
 
-labeled_ratio: 0.2
+labeled_ratio: 0.1
 
 runs:
   - architecture: 'ConceptEmbeddingModel'
