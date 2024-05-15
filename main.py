@@ -118,9 +118,7 @@ if __name__ == '__main__':
                                 return 1 - x
                             if test_int_args['group_level_competencies']:
                                 if real_comp == "unif":
-                                    batch_group_level_competencies = np.zeros(
-                                        (x.shape[0], len(concept_map))
-                                    )
+                                    batch_group_level_competencies = np.zeros((x.shape[0], len(concept_map)))
                                     for batch_idx in range(x.shape[0]):
                                         for group_idx, (_, concept_members) in enumerate(concept_map.items()):
                                             batch_group_level_competencies[

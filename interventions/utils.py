@@ -18,7 +18,7 @@ from models.construction import load_trained_model
 from cem.interventions.random import IndependentRandomMaskIntPolicy
 from cem.interventions.random import IndependentRandomMaskIntPolicy
 from cem.interventions.uncertainty import UncertaintyMaximizerPolicy
-from cem.interventions.coop import CooP
+from interventions.coop import CooP
 from cem.interventions.optimal import GreedyOptimal
 from cem.interventions.behavioural_learning import BehavioralLearningPolicy
 from cem.interventions.global_policies import (
@@ -78,7 +78,7 @@ DEFAULT_POLICIES = [
 
 
 ################################################################################
-## CONCEPT INTERVENTION SELECTION POLICIES
+# CONCEPT INTERVENTION SELECTION POLICIES
 ################################################################################
 
 class InterventionPolicyWrapper(object):
@@ -343,18 +343,13 @@ def intervene_in_cbm(
             num_workers=test_dl.num_workers,
         )
     intervention_accs = []
-    # If no concept groups are given, then we assume that all concepts
-    # represent a unitary group themselves
-    concept_group_map = concept_group_map or dict(
-        [(i, [i]) for i in range(n_concepts)]
-    )
+    # If no concept groups are given, then we assume that all concepts represent a unitary group themselves
+    concept_group_map = concept_group_map or dict([(i, [i]) for i in range(n_concepts)])
     groups = intervened_groups or list(range(0, len(concept_group_map) + 1, 1))
+    print(f"groups: {groups}")
 
     if (not rerun) and key_name:
-        result_file = os.path.join(
-            result_dir,
-            key_name + f"_fold_{split}.npy",
-        )
+        result_file = os.path.join(result_dir, key_name + f"_fold_{split}.npy")
         if os.path.exists(result_file):
             result = np.load(result_file)
             total_time_file = os.path.join(
@@ -394,8 +389,7 @@ def intervene_in_cbm(
     construct_time = time.time()
     if isinstance(policy_params, Callable):
         # Then we were given some lazy-execution parameters which
-        # we will now generate as it seems like we will have to
-        # run this after all
+        # we will now generate as it seems like we will have to run this after all
         policy_params = policy_params()
     model.intervention_policy = concept_selection_policy(
         concept_group_map=concept_group_map,
@@ -404,8 +398,7 @@ def intervene_in_cbm(
     )
     construct_time = time.time() - construct_time
 
-    # Now include the competence that we will assume
-    # for all concepts
+    # Now include the competence that we will assume for all concepts
     if (
             (x_test is None) or
             (y_test is None) or
@@ -423,19 +416,11 @@ def intervene_in_cbm(
                 x_test.append(x)
                 y_test.append(y)
                 c_test.append(c)
-            x_test = torch.FloatTensor(
-                np.concatenate(x_test, axis=0)
-            ).type(x_type)
-            y_test = torch.FloatTensor(
-                np.concatenate(y_test, axis=0)
-            ).type(y_type)
-            c_test = torch.FloatTensor(
-                np.concatenate(c_test, axis=0)
-            ).type(c_type)
+            x_test = torch.FloatTensor(np.concatenate(x_test, axis=0)).type(x_type)
+            y_test = torch.FloatTensor(np.concatenate(y_test, axis=0)).type(y_type)
+            c_test = torch.FloatTensor(np.concatenate(c_test, axis=0)).type(c_type)
     np.random.seed(42)
-    indices = np.random.permutation(x_test.shape[0])[
-              :int(np.ceil(x_test.shape[0] * test_subsampling))
-              ]
+    indices = np.random.permutation(x_test.shape[0])[:int(np.ceil(x_test.shape[0] * test_subsampling))]
     x_test = x_test[indices]
     c_test = c_test[indices]
     y_test = y_test[indices]
@@ -445,12 +430,14 @@ def intervene_in_cbm(
         c=c_test,
         concept_group_map=concept_group_map,
     )
+    print(f"competencies_test {competencies_test}")
     c_test = concepts_from_competencies(
         c=c_test,
         competencies=real_competence_generator(competencies_test),
         use_concept_groups=group_level_competencies,
         concept_map=concept_group_map,
     )
+    print(f"c_test: {c_test.shape}, {c_test}")
     competencies_test = torch.FloatTensor(competencies_test)
     test_dl = torch.utils.data.DataLoader(
         dataset=torch.utils.data.TensorDataset(
@@ -469,41 +456,27 @@ def intervene_in_cbm(
             # Then this is the case where it is ignored
             intervention_accs.append(0)
             continue
-        logging.debug(
-            f"Intervening with {num_groups_intervened} out of "
-            f"{len(concept_group_map)} concept groups"
-        )
-        logging.debug(
-            f"\tFor split {split} with "
-            f"{num_groups_intervened} groups intervened"
-        )
+        logging.debug(f"Intervening with {num_groups_intervened} out of {len(concept_group_map)} concept groups")
+        logging.debug(f"\tFor split {split} with {num_groups_intervened} groups intervened")
 
-        ####
         # Set the model's intervention policy
-        ####
-        model.intervention_policy.num_groups_intervened = (
-                num_groups_intervened - prev_num_groups_intervened
-        )
+        model.intervention_policy.num_groups_intervened = (num_groups_intervened - prev_num_groups_intervened)
         trainer = pl.Trainer(
             accelerator=accelerator,
             devices=devices,
             logger=False,
         )
         if int(os.environ.get("VERBOSE_INTERVENTIONS", "0")):
+            print(f"VERBOSE_INTERVENTIONS")
             start_time = time.time()
-            test_batch_results = trainer.predict(
-                model,
-                test_dl,
-            )
+            test_batch_results = trainer.predict(model, test_dl)
 
         else:
+            print(f"NOT VERBOSE_INTERVENTIONS")
             f = io.StringIO()
             with redirect_stdout(f):
                 start_time = time.time()
-                test_batch_results = trainer.predict(
-                    model,
-                    test_dl,
-                )
+                test_batch_results = trainer.predict(model, test_dl)
         coeff = (num_groups_intervened - prev_num_groups_intervened)
         avg_times.append(
             (time.time() - start_time) / (
@@ -511,23 +484,24 @@ def intervene_in_cbm(
             )
         )
         y_pred = np.concatenate(
-            list(map(lambda x: x[2].detach().cpu().numpy(), test_batch_results)),
+            list(map(lambda x: x[3].detach().cpu().numpy(), test_batch_results)),
             axis=0,
         )
+        for i in test_batch_results[0]:
+            print(f"test_batch_results: {i.shape}")
         if y_pred.shape[-1] > 1:
             y_pred = np.argmax(y_pred, axis=-1)
         else:
             y_pred = np.squeeze((expit(y_pred) >= 0.5).astype(np.int32), axis=-1)
-        prev_interventions = np.concatenate(
-            list(map(lambda x: x[3].detach().cpu().numpy(), test_batch_results)),
-            axis=0,
-        )
+        # prev_interventions = np.concatenate(
+        #     list(map(lambda x: x[4].detach().cpu().numpy(), test_batch_results)),
+        #     axis=0,
+        # )
+        # TODO
         if n_tasks > 1:
             acc = np.mean(y_pred == y_test.detach().cpu().numpy())
-            logging.debug(
-                f"\tTest accuracy when intervening "
-                f"with {num_groups_intervened} "
-                f"concept groups is {acc * 100:.2f}%."
+            logging.info(
+                f"Test accuracy when intervening with {num_groups_intervened} concept groups is {acc * 100:.2f}%."
             )
         else:
             if int(os.environ.get("VERBOSE_INTERVENTIONS", "0")):
@@ -536,16 +510,17 @@ def intervene_in_cbm(
                 f = io.StringIO()
                 with redirect_stdout(f):
                     [test_results] = trainer.test(model, test_dl)
-            acc = test_results['test_y_auc']
-            logging.debug(
+            logging.info(f"n_task: {n_tasks}==========================================")
+            acc = test_results['test_y_acc']
+            logging.info(f"test_result: {test_results}")
+            logging.info(
                 f"\tTest AUC when intervening with {num_groups_intervened} "
                 f"concept groups is {acc * 100:.2f}% (accuracy "
                 f"is {np.mean(y_pred == y_test.detach().cpu().numpy()) * 100:.2f}%)."
             )
         intervention_accs.append(acc)
 
-        # And generate the next dataset so that we can reuse previous
-        # interventions on the same samples in the future to save time
+        # And generate the next dataset so that we can reuse previous interventions on the same samples in the future to save time
         prev_num_groups_intervened = num_groups_intervened
         test_dl = torch.utils.data.DataLoader(
             dataset=torch.utils.data.TensorDataset(
@@ -553,39 +528,25 @@ def intervene_in_cbm(
                 y_test,
                 c_test,
                 competencies_test,
-                torch.IntTensor(prev_interventions),
+                # torch.IntTensor(prev_interventions), # TODO
             ),
             batch_size=test_dl.batch_size,
             num_workers=test_dl.num_workers,
         )
     avg_time = np.mean(avg_times)
-    print(
-        f"\tAverage intervention took {avg_time:.5f} seconds and "
-        f"construction took {construct_time:.5f} seconds."
-    )
+    print(f"\tAverage intervention took {avg_time:.5f} seconds and construction took {construct_time:.5f} seconds.")
     if key_name:
-        result_file = os.path.join(
-            result_dir,
-            key_name + f"_{run_name}_fold_{split}.npy",
-        )
+        result_file = os.path.join(result_dir, key_name + f"_{run_name}_fold_{split}.npy")
         np.save(result_file, intervention_accs)
-
-        result_file = os.path.join(
-            result_dir,
-            key_name + f"_avg_int_time_{run_name}_fold_{split}.npy",
-        )
+        result_file = os.path.join(result_dir, key_name + f"_avg_int_time_{run_name}_fold_{split}.npy")
         np.save(result_file, np.array([avg_time]))
-
-        result_file = os.path.join(
-            result_dir,
-            key_name + f"_construct_time_{run_name}_fold_{split}.npy",
-        )
+        result_file = os.path.join(result_dir, key_name + f"_construct_time_{run_name}_fold_{split}.npy")
         np.save(result_file, np.array([construct_time]))
     return intervention_accs, avg_time, construct_time
 
 
 ##########################
-## CooP Fine-tuning
+# CooP Fine-tuning
 ##########################
 
 def fine_tune_coop(
@@ -1200,10 +1161,7 @@ def test_interventions(
         task_class_weights=None,
 ):
     intervention_config = config.get('intervention_config', {})
-    used_policies = intervention_config.get(
-        'intervention_policies',
-        DEFAULT_POLICIES,
-    )
+    used_policies = intervention_config.get('intervention_policies', DEFAULT_POLICIES)
     intervention_batch_size = intervention_config.get(
         "intervention_batch_size",
         int(os.environ.get(f"INT_BATCH_SIZE", intervention_batch_size)),
@@ -1221,15 +1179,9 @@ def test_interventions(
             x_test.append(x)
             y_test.append(y)
             c_test.append(c)
-        x_test = torch.FloatTensor(
-            np.concatenate(x_test, axis=0)
-        ).type(x_type)
-        y_test = torch.FloatTensor(
-            np.concatenate(y_test, axis=0)
-        ).type(y_type)
-        c_test = torch.FloatTensor(
-            np.concatenate(c_test, axis=0)
-        ).type(c_type)
+        x_test = torch.FloatTensor(np.concatenate(x_test, axis=0)).type(x_type)
+        y_test = torch.FloatTensor(np.concatenate(y_test, axis=0)).type(y_type)
+        c_test = torch.FloatTensor(np.concatenate(c_test, axis=0)).type(c_type)
 
     for competence_level in competence_levels:
         def competence_generator(
@@ -1240,40 +1192,28 @@ def test_interventions(
         ):
             if group_level_competencies:
                 # Then we will operate at a group level, so we need to make
-                # sure we distribute competence correctly across different
-                # members of a given group!
+                # sure we distribute competence correctly across different members of a given group!
                 if competence_level == "unif":
                     # When using uniform competence, we will assign the same
                     # competencies to all concepts within the same group based
-                    # on the cardinallity of the groups (assuming all groups
+                    # on the cardinality of the groups (assuming all groups
                     # correspond to mutually exclusive concepts!)
-                    batch_group_level_competencies = np.zeros(
-                        (c.shape[0], len(concept_group_map))
-                    )
+                    batch_group_level_competencies = np.zeros((c.shape[0], len(concept_group_map)))
                     for batch_idx in range(c.shape[0]):
-                        for group_idx, (_, concept_members) in enumerate(
-                                concept_map.items()
-                        ):
+                        for group_idx, (_, concept_members) in enumerate(concept_map.items()):
                             batch_group_level_competencies[
                                 batch_idx,
                                 group_idx,
                             ] = np.random.uniform(1 / len(concept_members), 1)
                 else:
-                    batch_group_level_competencies = np.ones(
-                        (c.shape[0], len(concept_group_map))
-                    ) * competence_level
+                    batch_group_level_competencies = np.ones((c.shape[0], len(concept_group_map))) * competence_level
                 return batch_group_level_competencies
 
             if competence_level == "unif":
                 # Then we will sample from a uniform distribution all concepts
                 # regardless of their group!
-                return np.random.uniform(
-                    0.5,
-                    1,
-                    size=c.shape,
-                )
-            # Else we simply assign the same competency to all concepts in
-            # all groups!
+                return np.random.uniform(0.5, 1, size=c.shape)
+            # Else we simply assign the same competency to all concepts in all groups!
             return np.ones(c.shape) * competence_level
 
         if competence_level == 1:
@@ -1286,15 +1226,9 @@ def test_interventions(
         for policy_args in currently_used_policies:
             key_policy_name = policy_args["policy"] + "_" + "_".join([
                 f'{key}_{policy_args[key]}'
-                for key in sorted(policy_args.keys())
-                if key != 'policy'
+                for key in sorted(policy_args.keys()) if key != 'policy'
             ])
-            if (
-                    os.environ.get(
-                        f"IGNORE_INTERVENTION_{key_policy_name.upper()}",
-                        "0"
-                    ) == "1"
-            ):
+            if os.environ.get(f"IGNORE_INTERVENTION_{key_policy_name.upper()}", "0") == "1":
                 continue
             policy_params_fn, concept_selection_policy = get_int_policy(
                 policy_args=policy_args,
@@ -1306,10 +1240,7 @@ def test_interventions(
                 result_dir=result_dir,
                 tune_params=intervention_config.get('tune_params', True),
                 concept_group_map=concept_map,
-                intervened_groups=intervention_config.get(
-                    'tune_intervened_groups',
-                    None,
-                ),
+                intervened_groups=intervention_config.get('tune_intervened_groups', None),
                 val_dl=val_dl,
                 train_dl=train_dl,
                 accelerator=accelerator,
@@ -1325,46 +1256,21 @@ def test_interventions(
                 ),
                 task_class_weights=task_class_weights,
             )
-            print(
-                f"\tIntervening in {run_name} with policy {key_policy_name} and "
-                f"competence {competence_level}"
-            )
+            logging.info(f"Intervening in {run_name} with policy {key_policy_name} and competence {competence_level}")
             if competence_level == 1:
                 key = f'test_acc_y_{key_policy_name}_ints'
                 int_time_key = f'avg_int_time_{key_policy_name}_ints'
-                construction_times_key = (
-                    f'construction_time_{key_policy_name}_ints'
-                )
+                construction_times_key = f'construction_time_{key_policy_name}_ints'
             else:
-                extra_suffix = (
-                    ("_" + extra_suffix) if extra_suffix else extra_suffix
-                )
+                extra_suffix = ("_" + extra_suffix) if extra_suffix else extra_suffix
                 if group_level_competencies:
-                    key = (
-                        f'test_acc_y_{key_policy_name}_ints_co_{competence_level}'
-                        f'_gl{extra_suffix}'
-                    )
-                    int_time_key = (
-                        f'avg_int_time_{key_policy_name}_ints_co_{competence_level}'
-                        f'_gl{extra_suffix}'
-                    )
-                    construction_times_key = (
-                        f'construction_time_{key_policy_name}_ints_'
-                        f'co_{competence_level}_gl_{extra_suffix}'
-                    )
+                    key = f'test_acc_y_{key_policy_name}_ints_co_{competence_level}_gl{extra_suffix}'
+                    int_time_key = f'avg_int_time_{key_policy_name}_ints_co_{competence_level}_gl{extra_suffix}'
+                    construction_times_key = f'construction_time_{key_policy_name}_ints_co_{competence_level}_gl_{extra_suffix}'
                 else:
-                    key = (
-                        f'test_acc_y_{key_policy_name}_ints_co_{competence_level}'
-                        f'{extra_suffix}'
-                    )
-                    int_time_key = (
-                        f'avg_int_time_{key_policy_name}_ints_co_{competence_level}'
-                        f'{extra_suffix}'
-                    )
-                    construction_times_key = (
-                        f'construction_time_{key_policy_name}_ints_co_{competence_level}'
-                        f'{extra_suffix}'
-                    )
+                    key = f'test_acc_y_{key_policy_name}_ints_co_{competence_level}{extra_suffix}'
+                    int_time_key = f'avg_int_time_{key_policy_name}_ints_co_{competence_level}{extra_suffix}'
+                    construction_times_key = f'construction_time_{key_policy_name}_ints_co_{competence_level}{extra_suffix}'
             dataset_config = config['dataset_config']
             (int_results, avg_time, constr_time), loaded = load_call(
                 function=intervene_in_cbm,
@@ -1418,27 +1324,13 @@ def test_interventions(
             results[int_time_key] = avg_time
             results[construction_times_key] = constr_time
             if avg_time:
-                extra = (
-                    f" (avg int time is {avg_time:.5f}s and construction "
-                    f"time is {constr_time:.5f}s)"
-                )
+                extra = f"(avg int time is {avg_time:.5f}s and construction time is {constr_time:.5f}s)"
             else:
                 extra = ""
             for num_groups_intervened, val in enumerate(int_results):
-                if n_tasks > 1:
-                    logging.info(
-                        f"\t\tTest accuracy when intervening "
-                        f"with {num_groups_intervened} "
-                        f"concept groups with claimed competence "
-                        f"{competence_level} and real competence "
-                        f"{real_competence_level} is {val * 100:.2f}%{extra}."
-                    )
-                else:
-                    logging.info(
-                        f"\t\tTest AUC when intervening "
-                        f"with {num_groups_intervened} "
-                        f"concept groups with claimed competence "
-                        f"{competence_level} and real competence "
-                        f"{real_competence_level} is {val * 100:.2f}%{extra}."
-                    )
+                logging.info(
+                    f"\t\tTest accuracy when intervening with {num_groups_intervened} "
+                    f"concept groups with claimed competence {competence_level} and real competence "
+                    f"{real_competence_level} is {val * 100:.2f}%{extra}."
+                )
     return results

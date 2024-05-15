@@ -878,6 +878,12 @@ class CUBDataset(Dataset):
         )
         img = Image.open(img_path).convert('RGB')
 
+        transform = transforms.Compose([
+            transforms.CenterCrop(299),
+            transforms.ToTensor(),  # implicitly divides by 255
+        ])
+        img_show = transform(img)
+
         class_label = img_data['class_label']
         if self.label_transform:
             class_label = self.label_transform(class_label)
@@ -890,17 +896,8 @@ class CUBDataset(Dataset):
             attr_label = img_data['attribute_label']
         if self.concept_transform is not None:
             attr_label = self.concept_transform(attr_label)
-        if self.no_img:
-            if self.n_class_attr == 3:
-                one_hot_attr_label = np.zeros(
-                    (len(SELECTED_CONCEPTS), self.n_class_attr)
-                )
-                one_hot_attr_label[np.arange(len(SELECTED_CONCEPTS)), attr_label] = 1
-                return one_hot_attr_label, class_label, torch.tensor(l), nbr_concepts, nbr_weight
-            else:
-                return attr_label, class_label, torch.tensor(l), nbr_concepts, nbr_weight
-        else:
-            return img, class_label, torch.FloatTensor(attr_label), torch.tensor(l), nbr_concepts, nbr_weight
+
+        return img, img_show, class_label, torch.FloatTensor(attr_label), torch.tensor(l), nbr_concepts, nbr_weight
 
 
 class ImbalancedDatasetSampler(torch.utils.data.sampler.Sampler):

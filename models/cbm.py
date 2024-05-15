@@ -97,9 +97,7 @@ class ConceptBottleneckModel(pl.LightningModule):
             # go to zero when applied a sigmoid)
             self.inactive_intervention_values = torch.FloatTensor(
                 [1 for _ in range(n_concepts)]
-            ) * (
-                                                    -5.0 if not sigmoidal_prob else 0.0
-                                                )
+            ) * (-5.0 if not sigmoidal_prob else 0.0)
 
         # For legacy purposes, we wrap the model around a torch.nn.Sequential
         # module
@@ -146,20 +144,20 @@ class ConceptBottleneckModel(pl.LightningModule):
         self.use_concept_groups = use_concept_groups
 
     def _unpack_batch(self, batch):
-        if len(batch) <= 5:
-            x, y, c = batch[0], batch[1], batch[2]
-            l, nbr_y, nbr_w = None, None, None
+        if len(batch) == 4:
+            x, x_, y, c = batch
+            l, nbr_c, nbr_w = None, None, None
+            competencies, prev_interventions = None, None
+        elif len(batch) == 5:
+            x, x_, y, c, competencies = batch
+            l, nbr_c, nbr_w, prev_interventions = None, None, None, None
+        elif len(batch) == 6:
+            x, x_, y, c, competencies, prev_interventions = batch
+            l, nbr_c, nbr_w = None, None, None
         else:
-            x, y, c, l, nbr_y, nbr_w = batch
-        if len(batch) > 6:
-            competencies = batch[6]
-        else:
-            competencies = None
-        if len(batch) > 7:
-            prev_interventions = batch[7]
-        else:
-            prev_interventions = None
-        return x, y, c, l, nbr_y, nbr_w, competencies, prev_interventions
+            x, x_, y, c, l, nbr_c, nbr_w = batch
+            competencies, prev_interventions = None, None
+        return x, x_, y, c, l, nbr_c, nbr_w, competencies, prev_interventions
 
     def _standardize_indices(self, intervention_idxs, batch_size):
         if isinstance(intervention_idxs, list):
@@ -297,11 +295,15 @@ class ConceptBottleneckModel(pl.LightningModule):
             c=None,
             y=None,
             l=None,
+            x_=None,
             train=False,
             latent=None,
             intervention_idxs=None,
             competencies=None,
             prev_interventions=None,
+            output_embeddings=False,
+            output_latent=None,
+            output_interventions=None
     ):
         if latent is None:
             latent = self.x2c_model(x)
@@ -403,6 +405,7 @@ class ConceptBottleneckModel(pl.LightningModule):
             c=None,
             y=None,
             l=None,
+            x_=None,
             latent=None,
             intervention_idxs=None,
             competencies=None,
@@ -414,6 +417,7 @@ class ConceptBottleneckModel(pl.LightningModule):
             c=c,
             y=y,
             l=l,
+            x_=x_,
             competencies=competencies,
             prev_interventions=prev_interventions,
             intervention_idxs=intervention_idxs,
@@ -427,13 +431,14 @@ class ConceptBottleneckModel(pl.LightningModule):
             intervention_idxs=None,
             dataloader_idx=0,
     ):
-        x, y, c, l, nbr_y, nbr_w, competencies, prev_interventions = self._unpack_batch(batch)
+        x, x_, y, c, l, nbr_c, nbr_w, competencies, prev_interventions = self._unpack_batch(batch)
         return self._forward(
             x,
             intervention_idxs=intervention_idxs,
             c=c,
             y=y,
             l=l,
+            x_=x_,
             train=False,
             competencies=competencies,
             prev_interventions=prev_interventions,
@@ -446,7 +451,7 @@ class ConceptBottleneckModel(pl.LightningModule):
             train=False,
             intervention_idxs=None,
     ):
-        x, y, c, l, nbr_c, nbr_w, competencies, prev_interventions = self._unpack_batch(batch)
+        x, x_, y, c, l, nbr_c, nbr_w, competencies, prev_interventions = self._unpack_batch(batch)
 
         nbr_w_ = nbr_w.unsqueeze(-1).repeat(1, 1, nbr_c.size(2))
         c_pseudo = nbr_c * nbr_w_
@@ -458,11 +463,12 @@ class ConceptBottleneckModel(pl.LightningModule):
             c=c,
             y=y,
             l=l,
+            x_=x_,
             train=train,
             competencies=competencies,
             prev_interventions=prev_interventions,
         )
-        c_sem, c_pred_labeled, c_pred_unlabeled, y_pred = outputs
+        c_sem, c_pred_labeled, c_pred_unlabeled, y_pred = outputs[0], outputs[1], outputs[2], outputs[3]
 
         task_loss = self.loss_task(y_pred, y)
         task_loss_scalar = task_loss.detach()

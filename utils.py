@@ -7,6 +7,8 @@ import logging
 import itertools
 import numpy as np
 from pathlib import Path
+import torch.nn.functional as F
+import matplotlib.pyplot as plt
 
 import data.cub_loader as cub_data_module
 import data.mnist_loader as mnist_data_module
@@ -211,3 +213,68 @@ def evaluate_expressions(config, parent_config=None, soft=False):
         elif isinstance(val, dict):
             # Then we progress recursively
             evaluate_expressions(val, parent_config=parent_config)
+
+
+def visualize_and_save_heatmaps(
+        x,
+        heatmap,
+        sample_index=0,
+        output_dir='output_images',
+        data_save_path='saved_data.pth'
+):
+    """
+    x (torch.Tensor): 输入图像张量，形状为 [batch_size, channels, height, width]
+    heatmap (torch.Tensor): 热图张量，形状为 [batch_size, num_heatmaps, heatmap_height, heatmap_width]
+    sample_index (int): 要处理和显示的样本索引
+    save_path (str): 保存图像文件的路径
+    data_save_path (str): 保存原数据的文件路径
+    """
+    # 创建输出目录
+    os.makedirs(output_dir, exist_ok=True)
+
+    # 选择一个批次中的样本
+    image = x[sample_index].permute(1, 2, 0).numpy()  # 转换成 (height, width, channels)
+    heatmaps = heatmap[sample_index]  # 选择第 sample_index 个样本的所有热图
+
+    # 保存原图
+    plt.imshow(image)
+    plt.axis('off')
+    plt.title('Original Image')
+    plt.tight_layout()
+    plt.savefig(os.path.join(output_dir, 'original_image.png'))
+    plt.close()
+
+    # 对每个热图进行处理并保存
+    for i in range(heatmaps.shape[0]):
+        # 取出第 i 个通道的 heatmap
+        hm = heatmaps[i].unsqueeze(0).unsqueeze(0)  # (1, 1, heatmap_height, heatmap_width)
+
+        # 上采样到图像大小
+        hm_upsampled = F.interpolate(hm, size=(image.shape[0], image.shape[1]), mode='bilinear', align_corners=False)
+        hm_upsampled = hm_upsampled.squeeze().numpy()  # (height, width)
+
+        # 生成红色蒙版
+        red_mask = np.zeros_like(image)
+        red_mask[..., 0] = 1.0  # 红色通道
+        red_mask[..., 1] = 0.0  # 绿色通道
+        red_mask[..., 2] = 0.0  # 蓝色通道
+
+        # 根据 heatmap 的值设置透明度
+        alpha = hm_upsampled / hm_upsampled.max()  # 归一化到 0-1
+        alpha = np.clip(alpha, 0, 1)  # 保证值在 0-1 之间
+
+        # 叠加蒙版到原始图像上
+        overlay = image.copy()
+        for c in range(3):
+            # overlay[..., c] = image[..., c] * (1 - alpha) + red_mask[..., c] * alpha
+            overlay[..., c] = np.clip(image[..., c] * (1 - alpha) + red_mask[..., c] * alpha, 0, 1)
+
+        plt.imshow(overlay)
+        plt.axis('off')
+        plt.title(f'Heatmap {i + 1}')
+        plt.tight_layout()
+        plt.savefig(os.path.join(output_dir, f'heatmap_{i + 1}.png'))
+        plt.close()
+
+    torch.save({'x': x, 'heatmap': heatmap}, f"{output_dir}/{data_save_path}")
+    print(f'Heatmap saved to {data_save_path}')

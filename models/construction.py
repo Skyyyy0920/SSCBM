@@ -281,7 +281,7 @@ def construct_sequential_models(
 
 
 ################################################################################
-## MODEL LOADING
+# MODEL LOADING
 ################################################################################
 
 
@@ -379,8 +379,7 @@ def load_trained_model(
             task_class_weights=task_class_weights,
         )
 
-        # As well as the wrapper CBM model we will use for serialization
-        # and testing
+        # As well as the wrapper CBM model we will use for serialization and testing
         # We will be a bit cheeky and use the model with the task loss
         # weight set to 0 for training with the same dataset
         model_config = copy.deepcopy(config)
@@ -414,6 +413,7 @@ def load_trained_model(
         )
 
     else:
+        print(f"Loading CEM from {model_saved_path}")
         model = construct_model(
             n_concepts=n_concepts,
             n_tasks=n_tasks,

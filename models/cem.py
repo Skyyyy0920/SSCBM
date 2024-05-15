@@ -1,10 +1,12 @@
 import torch
 from torch import nn
+import numpy as np
 import pytorch_lightning as pl
 from torchvision.models import resnet50, resnet18, ResNet18_Weights
 
 from models.cbm import ConceptBottleneckModel
 import train.utils as utils
+from utils import visualize_and_save_heatmaps
 
 
 class ConceptEmbeddingModel(ConceptBottleneckModel):
@@ -170,6 +172,8 @@ class ConceptEmbeddingModel(ConceptBottleneckModel):
 
         self.pooling = nn.AdaptiveAvgPool2d(1)
 
+        self.output_image = True
+
     def _after_interventions(
             self,
             prob,
@@ -218,11 +222,15 @@ class ConceptEmbeddingModel(ConceptBottleneckModel):
             c=None,
             y=None,
             l=None,
+            x_=None,
             train=False,
             latent=None,
             intervention_idxs=None,
             competencies=None,
             prev_interventions=None,
+            output_embeddings=False,
+            output_latent=None,
+            output_interventions=None
     ):
         if latent is None:
             pre_c = self.pre_concept_model(x)
@@ -309,4 +317,28 @@ class ConceptEmbeddingModel(ConceptBottleneckModel):
         c_pred_unlabeled = self.pooling(heatmap).squeeze()
         c_pred_unlabeled = self.sigmoid(c_pred_unlabeled)
 
-        return c_sem, c_pred, c_pred_unlabeled, y
+        tail_results = []
+        if output_interventions:
+            if intervention_idxs is not None and isinstance(intervention_idxs, np.ndarray):
+                intervention_idxs = torch.FloatTensor(intervention_idxs).to(x.device)
+            tail_results.append(intervention_idxs)
+        if output_latent:
+            tail_results.append(latent)
+        if output_embeddings:
+            tail_results.append(contexts[:, :, :self.emb_size])
+            tail_results.append(contexts[:, :, self.emb_size:])
+
+        if not train and self.output_image:
+            import os, time
+            logging_time = time.strftime('%H-%M-%S', time.localtime())
+            save_dir = os.path.join(f"heatmap", f"{logging_time}")
+            visualize_and_save_heatmaps(
+                x_.detach().cpu(),
+                heatmap.detach().cpu(),
+                sample_index=np.random.randint(0, len(x_)),
+                output_dir=save_dir,
+                data_save_path='saved_data.pth'
+            )
+            self.output_image = False
+
+        return tuple([c_sem, c_pred, c_pred_unlabeled, y] + tail_results)
