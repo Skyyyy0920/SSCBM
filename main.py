@@ -144,6 +144,7 @@ if __name__ == '__main__':
                             test_int_args['real_competence_generator'] = _real_competence_generator
                             test_int_args['extra_suffix'] = f"_real_comp_{real_comp}_"
                             test_int_args["real_competence_level"] = real_comp
+
                 update_statistics(
                     aggregate_results=results[run_name],
                     run_config=run_config,

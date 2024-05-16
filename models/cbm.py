@@ -410,6 +410,9 @@ class ConceptBottleneckModel(pl.LightningModule):
             intervention_idxs=None,
             competencies=None,
             prev_interventions=None,
+            output_embeddings=False,
+            output_latent=None,
+            output_interventions=None
     ):
         return self._forward(
             x,
@@ -422,6 +425,9 @@ class ConceptBottleneckModel(pl.LightningModule):
             prev_interventions=prev_interventions,
             intervention_idxs=intervention_idxs,
             latent=latent,
+            output_embeddings=output_embeddings,
+            output_latent=output_latent,
+            output_interventions=output_interventions
         )
 
     def predict_step(
@@ -476,7 +482,8 @@ class ConceptBottleneckModel(pl.LightningModule):
         concept_loss_labeled = self.loss_concept_labeled(c_sem[l], c[l])
         concept_loss_scalar_labeled = concept_loss_labeled.detach()
 
-        concept_loss_unlabeled = self.loss_concept_unlabeled(c_pred_unlabeled[~l], c_pseudo[~l])
+        # concept_loss_unlabeled = self.loss_concept_unlabeled(c_pred_unlabeled[~l], c_pseudo[~l])
+        concept_loss_unlabeled = self.loss_concept_unlabeled(c_pred_unlabeled, c_pseudo)
         concept_loss_scalar_unlabeled = concept_loss_unlabeled.detach()
 
         loss = task_loss + \

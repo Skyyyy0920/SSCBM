@@ -18,8 +18,8 @@ def get_args():
     # Data
     parser.add_argument('--dataset',
                         type=str,
-                        # default='CelebA',
-                        default='CUB-200-2011',
+                        default='CelebA',
+                        # default='CUB-200-2011',
                         # default='MNIST',
                         # default='XOR',
                         # default='Dot',

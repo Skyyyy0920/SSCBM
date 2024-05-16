@@ -8,22 +8,8 @@ from pathlib import Path
 from pytorch_lightning import seed_everything
 from torchvision import transforms
 
-
-###############################################################################
-## GLOBAL VARIABLES
-###############################################################################
-
-
-# IMPORANT NOTE: THIS DATASET NEEDS TO BE DOWNLOADED FIRST BEFORE BEING ABLE
-#                TO RUN ANY CUB EXPERIMENTS!!
-#                Instructions on how to download it can be found
-#                in https://mmlab.ie.cuhk.edu.hk/projects/CelebA.html
-# CAN BE OVERWRITTEN WITH AN ENV VARIABLE DATASET_DIR
-DATASET_DIR = os.environ.get("DATASET_DIR", 'cem/data/celeba')
-
-
 #########################################################
-## CONCEPT INFORMATION REGARDING CelebA
+# CONCEPT INFORMATION REGARDING CelebA
 #########################################################
 
 
@@ -101,32 +87,32 @@ CONCEPT_SEMANTICS = [
     'Young',
 ]
 
+
 ##########################################################
-## SIMPLIFIED LOADER FUNCTION FOR STANDARDIZATION
+# SIMPLIFIED LOADER FUNCTION FOR STANDARDIZATION
 ##########################################################
 
 
 def generate_data(
-    config,
-    root_dir=DATASET_DIR,
-    seed=42,
-    output_dataset_vars=False,
+        config,
+        labeled_ratio=0.1,
+        seed=42,
+        output_dataset_vars=False,
 ):
-    if root_dir is None:
-        root_dir = DATASET_DIR
+    root_dir = './data/CelebA/'
     concept_group_map = None
     seed_everything(seed)
     use_binary_vector_class = config.get('use_binary_vector_class', False)
     if use_binary_vector_class:
-        # Now reload by transform the labels accordingly
         width = config.get('label_binary_width', 5)
+
         def _binarize(concepts, selected, width):
             result = []
             binary_repr = []
             concepts = concepts[selected]
             for i in range(0, concepts.shape[-1], width):
                 binary_repr.append(
-                    str(int(np.sum(concepts[i : i + width]) > 0))
+                    str(int(np.sum(concepts[i: i + width]) > 0))
                 )
             return int("".join(binary_repr), 2)
 
@@ -137,6 +123,9 @@ def generate_data(
             target_transform=lambda x: x[0].long() - 1,
             target_type=['attr'],
         )
+
+        print(celeba_train_data)
+        exit()
 
         concept_freq = np.sum(
             celeba_train_data.attr.cpu().detach().numpy(),
@@ -157,10 +146,10 @@ def generate_data(
             num_hidden = config.get('num_hidden_concepts', 0)
             hidden_concepts = sorted(
                 sorted_concepts[
-                    num_concepts:min(
-                        (num_concepts + num_hidden),
-                        len(sorted_concepts)
-                    )
+                num_concepts:min(
+                    (num_concepts + num_hidden),
+                    len(sorted_concepts)
+                )
                 ]
             )
         else:
@@ -238,7 +227,7 @@ def generate_data(
             train_idxs = np.random.choice(
                 np.arange(0, len(celeba_train_data)),
                 replace=False,
-                size=len(celeba_train_data)//factor,
+                size=len(celeba_train_data) // factor,
             )
             logging.debug(f"Subsampling to {len(train_idxs)} elements.")
             celeba_train_data = torch.utils.data.Subset(

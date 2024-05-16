@@ -121,6 +121,8 @@ class CooP(InterventionPolicy):
                 intervention_idxs=prev_interventions,
                 c=c,
                 latent=latent,
+                output_interventions=True,
+                output_latent=True
             )
             if self.n_tasks > 1:
                 pred_class_prob, pred_class = torch.nn.functional.softmax(
@@ -149,6 +151,8 @@ class CooP(InterventionPolicy):
                 intervention_idxs=prev_interventions,
                 c=c,
                 latent=latent,
+                output_interventions=True,
+                output_latent=True
             )
             # Restore prev-interventions
             prev_interventions[:, concept_idx] = prev_mask
@@ -187,6 +191,8 @@ class CooP(InterventionPolicy):
                     intervention_idxs=prev_interventions,
                     c=c,
                     latent=latent,
+                    output_interventions=True,
+                    output_latent=True
                 )
                 # Restore prev-interventions
                 c[:, concept_idx] = old_c_vals
@@ -262,6 +268,8 @@ class CooP(InterventionPolicy):
                 intervention_idxs=prev_interventions,
                 c=c,
                 latent=latent,
+                output_interventions=True,
+                output_latent=True
             )
             if self.n_tasks > 1:
                 pred_class_prob, pred_class = torch.nn.functional.softmax(
@@ -425,7 +433,7 @@ class CooP(InterventionPolicy):
                 ]
                 for idx in range(x.shape[0])
             ]).to(prior_distribution.device)
-        _, _, _, y_preds, _, latent = self.cbm(x, output_embeddings=True, output_latent=True)
+        _, _, _, y_preds, _, latent = self.cbm(x, output_interventions=True, output_latent=True)
         if competencies is None:
             competencies = torch.ones(c.shape).to(x.device)
         if self.num_groups_intervened == len(self.concept_group_map):

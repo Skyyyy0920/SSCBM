@@ -75,6 +75,8 @@ momentum: 0.9
 sigmoidal_prob: False
 training_intervention_prob: 0.25
 
+labeled_ratio: 0.1
+
 
 runs:
   - architecture: 'ConceptEmbeddingModel'

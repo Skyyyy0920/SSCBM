@@ -346,7 +346,6 @@ def intervene_in_cbm(
     # If no concept groups are given, then we assume that all concepts represent a unitary group themselves
     concept_group_map = concept_group_map or dict([(i, [i]) for i in range(n_concepts)])
     groups = intervened_groups or list(range(0, len(concept_group_map) + 1, 1))
-    print(f"groups: {groups}")
 
     if (not rerun) and key_name:
         result_file = os.path.join(result_dir, key_name + f"_fold_{split}.npy")
@@ -409,7 +408,7 @@ def intervene_in_cbm(
         else:
             x_test, y_test, c_test = [], [], []
             for data in test_dl:
-                x, y, c, _, _, _ = data
+                x, _, y, c, _, _, _ = data
                 x_type = x.type()
                 y_type = y.type()
                 c_type = c.type()
@@ -430,14 +429,12 @@ def intervene_in_cbm(
         c=c_test,
         concept_group_map=concept_group_map,
     )
-    print(f"competencies_test {competencies_test}")
     c_test = concepts_from_competencies(
         c=c_test,
         competencies=real_competence_generator(competencies_test),
         use_concept_groups=group_level_competencies,
         concept_map=concept_group_map,
     )
-    print(f"c_test: {c_test.shape}, {c_test}")
     competencies_test = torch.FloatTensor(competencies_test)
     test_dl = torch.utils.data.DataLoader(
         dataset=torch.utils.data.TensorDataset(
@@ -457,7 +454,7 @@ def intervene_in_cbm(
             intervention_accs.append(0)
             continue
         logging.debug(f"Intervening with {num_groups_intervened} out of {len(concept_group_map)} concept groups")
-        logging.debug(f"\tFor split {split} with {num_groups_intervened} groups intervened")
+        logging.debug(f"For split {split} with {num_groups_intervened} groups intervened")
 
         # Set the model's intervention policy
         model.intervention_policy.num_groups_intervened = (num_groups_intervened - prev_num_groups_intervened)
@@ -478,17 +475,11 @@ def intervene_in_cbm(
                 start_time = time.time()
                 test_batch_results = trainer.predict(model, test_dl)
         coeff = (num_groups_intervened - prev_num_groups_intervened)
-        avg_times.append(
-            (time.time() - start_time) / (
-                    x_test.shape[0] * (coeff if coeff != 0 else 1)
-            )
-        )
+        avg_times.append((time.time() - start_time) / (x_test.shape[0] * (coeff if coeff != 0 else 1)))
         y_pred = np.concatenate(
             list(map(lambda x: x[3].detach().cpu().numpy(), test_batch_results)),
             axis=0,
         )
-        for i in test_batch_results[0]:
-            print(f"test_batch_results: {i.shape}")
         if y_pred.shape[-1] > 1:
             y_pred = np.argmax(y_pred, axis=-1)
         else:
@@ -510,17 +501,15 @@ def intervene_in_cbm(
                 f = io.StringIO()
                 with redirect_stdout(f):
                     [test_results] = trainer.test(model, test_dl)
-            logging.info(f"n_task: {n_tasks}==========================================")
-            acc = test_results['test_y_acc']
-            logging.info(f"test_result: {test_results}")
+            acc = test_results['test_y_auc']
             logging.info(
-                f"\tTest AUC when intervening with {num_groups_intervened} "
-                f"concept groups is {acc * 100:.2f}% (accuracy "
-                f"is {np.mean(y_pred == y_test.detach().cpu().numpy()) * 100:.2f}%)."
+                f"\tTest AUC when intervening with {num_groups_intervened} concept groups is {acc * 100:.2f}% "
+                f"(accuracy is {np.mean(y_pred == y_test.detach().cpu().numpy()) * 100:.2f}%)."
             )
         intervention_accs.append(acc)
 
-        # And generate the next dataset so that we can reuse previous interventions on the same samples in the future to save time
+        # And generate the next dataset so that we can reuse previous interventions
+        # on the same samples in the future to save time
         prev_num_groups_intervened = num_groups_intervened
         test_dl = torch.utils.data.DataLoader(
             dataset=torch.utils.data.TensorDataset(
@@ -755,7 +744,7 @@ def generate_policy_training_data(
     batch_size = batch_size or train_dl.batch_size
     x_train, y_train, c_train = [], [], []
     for ds_data in train_dl:
-        x, y, c, _, _, _ = ds_data
+        x, _, y, c, _, _, _ = ds_data
         x_train.append(x)
         y_train.append(y)
         c_train.append(c)
@@ -1172,7 +1161,7 @@ def test_interventions(
     else:
         x_test, y_test, c_test = [], [], []
         for ds_data in test_dl:
-            x, y, c, _, _, _ = ds_data
+            x, _, y, c, _, _, _ = ds_data
             x_type = x.type()
             y_type = y.type()
             c_type = c.type()
@@ -1323,14 +1312,4 @@ def test_interventions(
             results[key] = int_results
             results[int_time_key] = avg_time
             results[construction_times_key] = constr_time
-            if avg_time:
-                extra = f"(avg int time is {avg_time:.5f}s and construction time is {constr_time:.5f}s)"
-            else:
-                extra = ""
-            for num_groups_intervened, val in enumerate(int_results):
-                logging.info(
-                    f"\t\tTest accuracy when intervening with {num_groups_intervened} "
-                    f"concept groups with claimed competence {competence_level} and real competence "
-                    f"{real_competence_level} is {val * 100:.2f}%{extra}."
-                )
     return results

@@ -276,5 +276,5 @@ def visualize_and_save_heatmaps(
         plt.savefig(os.path.join(output_dir, f'heatmap_{i + 1}.png'))
         plt.close()
 
-    torch.save({'x': x, 'heatmap': heatmap}, f"{output_dir}/{data_save_path}")
+    # torch.save({'x': x, 'heatmap': heatmap}, f"{output_dir}/{data_save_path}")
     print(f'Heatmap saved to {data_save_path}')

@@ -319,16 +319,19 @@ class ConceptEmbeddingModel(ConceptBottleneckModel):
 
         tail_results = []
         if output_interventions:
+            print(f"output_intervention")
             if intervention_idxs is not None and isinstance(intervention_idxs, np.ndarray):
                 intervention_idxs = torch.FloatTensor(intervention_idxs).to(x.device)
             tail_results.append(intervention_idxs)
         if output_latent:
+            print(f"output_latent")
             tail_results.append(latent)
         if output_embeddings:
+            print(f"output_embedding")
             tail_results.append(contexts[:, :, :self.emb_size])
             tail_results.append(contexts[:, :, self.emb_size:])
 
-        if not train and self.output_image:
+        if not train and self.output_image and self.current_epoch >= 50:
             import os, time
             logging_time = time.strftime('%H-%M-%S', time.localtime())
             save_dir = os.path.join(f"heatmap", f"{logging_time}")
