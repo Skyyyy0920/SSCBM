@@ -721,22 +721,9 @@ class StratifiedSampler(Sampler):
 
 
 class CUBDataset(Dataset):
-    """
-    Returns a compatible Torch Dataset object customized for the CUB data
-    """
-
-    def __init__(self, pkl_file_paths, no_img, uncertain_label, image_dir, n_class_attr, labeled_ratio, training,
+    def __init__(self, pkl_file_paths, image_dir, labeled_ratio, training,
                  seed=42, root_dir='../data/CUB200/', path_transform=None, transform=None,
                  concept_transform=None, label_transform=None):
-        """
-        Arguments:
-        pkl_file_paths: list of full path to all the pkl data
-        no_img: whether to load the images (e.g. False for A -> Y model)
-        uncertain_label: if True, use 'uncertain_attribute_label' field (i.e. label weighted by uncertainty score, e.g. 1 & 3(probably) -> 0.75)
-        image_dir: default = 'images'. Will be append to the parent dir
-        n_class_attr: number of classes to predict for each attribute. If 3, then make a separate class for not visible
-        transform: whether to apply any special transformation. Default = None, i.e. use standard ImageNet preprocessing
-        """
         self.data = []
         self.is_train = any(["train" in path for path in pkl_file_paths])
         if not self.is_train:
@@ -747,10 +734,7 @@ class CUBDataset(Dataset):
         self.transform = transform
         self.concept_transform = concept_transform
         self.label_transform = label_transform
-        self.no_img = no_img
-        self.uncertain_label = uncertain_label
         self.image_dir = image_dir
-        self.n_class_attr = n_class_attr
         self.root_dir = root_dir
         self.path_transform = path_transform
         self.l_choice = defaultdict(bool)
@@ -782,9 +766,6 @@ class CUBDataset(Dataset):
         self.neighbor = self.nearest_neighbors_resnet(k=2)
 
     def nearest_neighbors_resnet(self, k=3):
-        """
-        Compute k-nearest neighbors for each image using ResNet50 features and assign weights based on distances
-        """
         preprocess = transforms.Compose([
             transforms.Resize(256),
             transforms.CenterCrop(224),
@@ -894,8 +875,6 @@ class ImbalancedDatasetSampler(torch.utils.data.sampler.Sampler):
     """
 
     def __init__(self, dataset, indices=None):
-        # if indices is not provided,
-        # all elements in the data will be considered
         self.indices = list(range(len(dataset))) \
             if indices is None else indices
 
@@ -931,17 +910,14 @@ class ImbalancedDatasetSampler(torch.utils.data.sampler.Sampler):
 
 def load_data(
         pkl_paths,
-        no_img,
         batch_size,
         labeled_ratio,
         seed=42,
         training=False,
-        uncertain_label=False,
-        n_class_attr=2,
         image_dir='images',
         resampling=False,
         resol=299,
-        root_dir='../data/CUB200/',
+        root_dir='./data/CUB_200_2011',
         num_workers=1,
         concept_transform=None,
         label_transform=None,
@@ -970,20 +946,12 @@ def load_data(
             transforms.Normalize(mean=[0.5, 0.5, 0.5], std=[2, 2, 2])
         ])
 
-    # transform = transforms.Compose([
-    #     transforms.CenterCrop(299),
-    #     transforms.ToTensor(),  # implicitly divides by 255
-    # ])
-
     dataset = CUBDataset(
         labeled_ratio=labeled_ratio,
         seed=seed,
         training=training,
         pkl_file_paths=pkl_paths,
-        no_img=no_img,
-        uncertain_label=uncertain_label,
         image_dir=image_dir,
-        n_class_attr=n_class_attr,
         transform=transform,
         root_dir=root_dir,
         concept_transform=concept_transform,
@@ -1146,11 +1114,8 @@ def generate_data(
         labeled_ratio=labeled_ratio,
         seed=seed,
         pkl_paths=[train_data_path],
-        no_img=False,
         training=True,
         batch_size=config['batch_size'],
-        uncertain_label=False,
-        n_class_attr=2,
         image_dir='images',
         resampling=False,
         root_dir=root_dir,
@@ -1161,11 +1126,8 @@ def generate_data(
         labeled_ratio=labeled_ratio,
         seed=seed,
         pkl_paths=[val_data_path],
-        no_img=False,
         training=False,
         batch_size=config['batch_size'],
-        uncertain_label=False,
-        n_class_attr=2,
         image_dir='images',
         resampling=False,
         root_dir=root_dir,
@@ -1177,11 +1139,8 @@ def generate_data(
         labeled_ratio=labeled_ratio,
         seed=seed,
         pkl_paths=[test_data_path],
-        no_img=False,
         training=False,
         batch_size=config['batch_size'],
-        uncertain_label=False,
-        n_class_attr=2,
         image_dir='images',
         resampling=False,
         root_dir=root_dir,

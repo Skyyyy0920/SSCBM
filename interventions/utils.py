@@ -408,7 +408,7 @@ def intervene_in_cbm(
         else:
             x_test, y_test, c_test = [], [], []
             for data in test_dl:
-                x, _, y, c, _, _, _ = data
+                x, y, c, _, _, _ = data
                 x_type = x.type()
                 y_type = y.type()
                 c_type = c.type()
@@ -742,7 +742,7 @@ def generate_policy_training_data(
     batch_size = batch_size or train_dl.batch_size
     x_train, y_train, c_train = [], [], []
     for ds_data in train_dl:
-        x, _, y, c, _, _, _ = ds_data
+        x, y, c, _, _, _ = ds_data
         x_train.append(x)
         y_train.append(y)
         c_train.append(c)
@@ -1159,7 +1159,7 @@ def test_interventions(
     else:
         x_test, y_test, c_test = [], [], []
         for ds_data in test_dl:
-            x, _, y, c, _, _, _ = ds_data
+            x, y, c, _, _, _ = ds_data
             x_type = x.type()
             y_type = y.type()
             c_type = c.type()

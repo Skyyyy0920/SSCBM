@@ -592,3 +592,17 @@ class ConceptBottleneckModel(pl.LightningModule):
             "lr_scheduler": lr_scheduler,
             "monitor": "loss",
         }
+
+    def plot_heatmap(
+            self,
+            x,
+            x_show=None,
+            c=None,
+            y=None,
+            output_dir='',
+    ):
+        """
+        Implemented in CEM
+        :return: None
+        """
+        pass

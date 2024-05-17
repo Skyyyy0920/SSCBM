@@ -1,4 +1,5 @@
 import yaml
+import re
 import zipfile
 from collections import defaultdict
 from utils import *
@@ -6,6 +7,76 @@ from train.evaluate import *
 from configs.basic_config import *
 from models.construction import construct_model
 from train.training import evaluate_cbm
+import os
+import torch
+import pickle
+import logging
+from pytorch_lightning import seed_everything
+from PIL import Image
+from torch.utils.data import Dataset, DataLoader, random_split
+import torchvision.transforms as transforms
+
+
+class CUBDataset_for_heatmap(Dataset):
+    def __init__(self, pkl_file_paths, image_dir,
+                 root_dir='./data/CUB_200_2011', path_transform=None, transform=None,
+                 concept_transform=None, label_transform=None):
+        self.data = []
+        self.is_train = any(["train" in path for path in pkl_file_paths])
+        if not self.is_train:
+            assert any([("test" in path) or ("val" in path) for path in pkl_file_paths])
+        for file_path in pkl_file_paths:
+            with open(file_path, 'rb') as f:
+                self.data.extend(pickle.load(f))
+        self.transform = transform
+        self.concept_transform = concept_transform
+        self.label_transform = label_transform
+        self.image_dir = image_dir
+        self.root_dir = root_dir
+        self.path_transform = path_transform
+
+    def __len__(self):
+        return len(self.data)
+
+    def __getitem__(self, idx):
+        img_data = self.data[idx]
+        neighbor_info = self.neighbor[idx]
+        neighbor_indices = neighbor_info['indices']
+        nbr_concepts = []
+        for idx in neighbor_indices:
+            nbr_concepts.append(self.data[idx]['attribute_label'])
+
+        img_path = img_data['img_path']
+        img_path = img_path.replace(
+            '/juice/scr/scr102/scr/thaonguyen/CUB_supervision/datasets/',
+            './data/CUB_200_2011/'
+        )
+        img = Image.open(img_path).convert('RGB')
+
+        match = re.search(r'CUB_200_2011/images/(.*?).jpg', img_path)
+        if match:
+            intermediate_str = match.group(1)
+            final_str = intermediate_str.split('/')[-1]
+        else:
+            final_str = 'oo'
+
+        transform = transforms.Compose([
+            transforms.CenterCrop(299),
+            transforms.ToTensor(),  # implicitly divides by 255
+        ])
+        img_show = transform(img)
+
+        class_label = img_data['class_label']
+        if self.label_transform:
+            class_label = self.label_transform(class_label)
+        if self.transform:
+            img = self.transform(img)
+
+        attr_label = img_data['attribute_label']
+        if self.concept_transform is not None:
+            attr_label = self.concept_transform(attr_label)
+
+        return img, img_show, class_label, torch.FloatTensor(attr_label), final_str
 
 
 def load_evaluate_model(
@@ -15,18 +86,12 @@ def load_evaluate_model(
         train_dl,
         val_dl,
         run_name,
-        result_dir=None,
         test_dl=None,
         imbalance=None,
         task_class_weights=None,
         rerun=False,
         logger=False,
-        project_name='',
-        split=0,
         seed=42,
-        save_model=True,
-        activation_freq=0,
-        single_frequency_epochs=0,
         gradient_clip_val=0,
         old_results=None,
         enable_checkpointing=False,
@@ -34,14 +99,6 @@ def load_evaluate_model(
         devices="auto",
 ):
     seed_everything(seed)
-
-    full_run_name = "test"
-
-    logging.info(f"Training ***{run_name}***")
-    for key, val in config.items():
-        logging.info(f"{key} -> {val}")
-
-    # create model
     model = construct_model(
         n_concepts,
         n_tasks,
@@ -99,16 +156,42 @@ if __name__ == '__main__':
 
     experiment_config["model_pretrain_path"] = "../saved_checkpoints/CUB-200-2011_12-32/test.pt"
 
-    (
-        train_dl,
-        val_dl,
-        test_dl,
-        imbalance,
-        concept_map,
-        intervened_groups,
-        task_class_weights,
-        acquisition_costs
-    ) = generate_dataset_and_update_config(experiment_config, args)
+    dataset_config = experiment_config['dataset_config']
+    if args.dataset == "CUB-200-2011":
+        data_module = cub_data_module
+    elif args.dataset == "CelebA":
+        data_module = celeba_data_module
+    elif args.dataset == "MNIST":
+        data_module = mnist_data_module
+    elif args.dataset in ["XOR", "vector", "Dot", "Trigonometric"]:
+        data_module = get_synthetic_data(dataset_config["dataset"])
+    else:
+        raise ValueError(f"Unsupported dataset {dataset_config['dataset']}!")
+
+    if experiment_config['c_extractor_arch'] == "mnist_extractor":
+        num_operands = dataset_config.get('num_operands', 32)
+        experiment_config["c_extractor_arch"] = mnist_data_module.get_mnist_extractor_arch(
+            input_shape=(dataset_config.get('batch_size', 512), num_operands, 28, 28),
+            num_operands=num_operands,
+        )
+    elif experiment_config['c_extractor_arch'] == 'synth_extractor':
+        input_features = get_synthetic_num_features(dataset_config["dataset"])
+        experiment_config["c_extractor_arch"] = get_synthetic_extractor_arch(input_features)
+
+    train_dl, val_dl, test_dl, imbalance, (n_concepts, n_tasks, concept_map) = data_module.generate_data(
+        config=dataset_config,
+        seed=42,
+        labeled_ratio=experiment_config['labeled_ratio'],
+    )
+    logging.info(f"imbalance: {imbalance}")
+
+    task_class_weights = update_config_with_dataset(
+        config=experiment_config,
+        train_dl=train_dl,
+        n_concepts=n_concepts,
+        n_tasks=n_tasks,
+        concept_map=concept_map,
+    )
 
     results = defaultdict(dict)
     for current_config in experiment_config['runs']:
@@ -121,8 +204,6 @@ if __name__ == '__main__':
             run_config['result_dir'] = save_dir
             evaluate_expressions(run_config, soft=True)
 
-            old_results = None
-
             model, model_results = load_evaluate_model(
                 run_name=run_name,
                 task_class_weights=task_class_weights,
@@ -134,30 +215,35 @@ if __name__ == '__main__':
                 train_dl=train_dl,
                 val_dl=val_dl,
                 test_dl=test_dl,
-                split=0,
-                result_dir=save_dir,
-                project_name=args.project_name,
                 seed=42,
                 imbalance=imbalance,
-                old_results=old_results,
                 gradient_clip_val=run_config.get('gradient_clip_val', 0),
-                activation_freq=args.activation_freq,
-                single_frequency_epochs=args.single_frequency_epochs,
             )
-    import time
-    import random
-    current_time = time.time()
-    random.seed(current_time)
-    if not train and self.output_image and self.current_epoch >= 50:
-        logging_time = time.strftime('%H-%M-%S', time.localtime())
-        save_dir = os.path.join(f"heatmap", f"{logging_time}")
-        visualize_and_save_heatmaps(
-            x_.detach().cpu(),
-            heatmap.detach().cpu(),
-            sample_index=random.randint(0, len(x_)),
-            output_dir=save_dir,
-            data_save_path='saved_data.pth'
-        )
-        self.output_image = False
+
+            transform = transforms.Compose([
+                transforms.CenterCrop(299),
+                transforms.ToTensor(),  # implicitly divides by 255
+                transforms.Normalize(mean=[0.5, 0.5, 0.5], std=[2, 2, 2])
+            ])
+
+            root_dir = './data/CUB_200_2011'
+            base_dir = os.path.join(root_dir, 'class_attr_data_10')
+            train_data_path = os.path.join(base_dir, 'train.pkl')
+            val_data_path = os.path.join(base_dir, 'val.pkl')
+            test_data_path = os.path.join(base_dir, 'test.pkl')
+
+            dataset = CUBDataset_for_heatmap(
+                pkl_file_paths=[train_data_path],
+                image_dir='images',
+                transform=transform,
+                root_dir=root_dir,
+            )
+
+            loader = DataLoader(dataset, batch_size=32, shuffle=True, drop_last=False, num_workers=64)
+
+            for b_idx, batch in enumerate(loader):
+                x, x_show, c, y, img_name = batch
+                model.plot_heatmap(x, x_show, c, y, img_name)
+                break
 
     print(f"========================finish========================")

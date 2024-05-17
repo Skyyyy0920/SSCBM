@@ -5,6 +5,7 @@ import pytorch_lightning as pl
 from torchvision.models import resnet50
 from models.cbm import ConceptBottleneckModel
 import train.utils as utils
+from utils import visualize_and_save_heatmaps
 
 
 class ConceptEmbeddingModel(ConceptBottleneckModel):
@@ -326,3 +327,44 @@ class ConceptEmbeddingModel(ConceptBottleneckModel):
             tail_results.append(contexts[:, :, self.emb_size:])
 
         return tuple([c_sem, c_pred, c_pred_unlabeled, y] + tail_results)
+
+    def plot_heatmap(
+            self,
+            x,
+            x_show=None,
+            c=None,
+            y=None,
+            img_name=None,
+            output_dir='heatmap',
+    ):
+        pre_c = self.pre_concept_model(x)
+        contexts = []
+        c_sem = []
+
+        for i, context_gen in enumerate(self.concept_context_generators):
+            if self.shared_prob_gen:
+                prob_gen = self.concept_prob_generators[0]
+            else:
+                prob_gen = self.concept_prob_generators[i]
+            context = context_gen(pre_c)
+            prob = prob_gen(context)
+            contexts.append(torch.unsqueeze(context, dim=1))
+            c_sem.append(self.sigmoid(prob))
+        c_sem = torch.cat(c_sem, axis=-1)
+        contexts = torch.cat(contexts, axis=1)
+
+        probs = c_sem
+        c_embedding = (
+                contexts[:, :, :self.emb_size] * torch.unsqueeze(probs, dim=-1) +
+                contexts[:, :, self.emb_size:] * (1 - torch.unsqueeze(probs, dim=-1))
+        )
+        image_feature = self.unlabeled_image_encoder(x)
+
+        heatmap = []
+        for i in range(len(image_feature)):
+            heatmap.append(torch.matmul(image_feature[i], c_embedding[i].transpose(0, 1)))
+        heatmap = torch.stack(heatmap).permute(0, 3, 1, 2)
+
+        for i in range(len(x)):
+            save_dir = f"./{output_dir}/{img_name[i]}"
+            visualize_and_save_heatmaps(x_show[i], heatmap[i], save_dir)
