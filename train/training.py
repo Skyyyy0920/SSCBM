@@ -13,7 +13,7 @@ import cem.train.utils as utils
 from models.construction import construct_model
 
 
-def _evaluate_cbm(
+def evaluate_cbm(
         model,
         trainer,
         config,
@@ -192,7 +192,7 @@ def train_end_to_end_model(
         ):
             del config_copy["c_extractor_arch"]
         joblib.dump(config_copy, os.path.join(result_dir, f'{run_name}_experiment_config.joblib'))
-    eval_results = _evaluate_cbm(
+    eval_results = evaluate_cbm(
         model=model,
         trainer=trainer,
         config=config,
