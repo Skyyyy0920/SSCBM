@@ -1,15 +1,10 @@
-import os
-import time
-import random
 import torch
 from torch import nn
 import numpy as np
 import pytorch_lightning as pl
-from torchvision.models import resnet50, resnet18, ResNet18_Weights
-
+from torchvision.models import resnet50
 from models.cbm import ConceptBottleneckModel
 import train.utils as utils
-from utils import visualize_and_save_heatmaps
 
 
 class ConceptEmbeddingModel(ConceptBottleneckModel):
@@ -171,10 +166,7 @@ class ConceptEmbeddingModel(ConceptBottleneckModel):
         self.use_concept_groups = use_concept_groups
 
         self.fc = nn.Linear(512, self.emb_size)
-
         self.pooling = nn.AdaptiveAvgPool2d(1)
-
-        self.output_image = True
 
     def _after_interventions(
             self,
@@ -205,6 +197,7 @@ class ConceptEmbeddingModel(ConceptBottleneckModel):
         return prob * (1 - intervention_idxs) + intervention_idxs * c_true, intervention_idxs
 
     def unlabeled_image_encoder(self, x):
+        # self.pre_concept_model resnet34
         x = self.pre_concept_model.conv1(x)
         x = self.pre_concept_model.bn1(x)
         x = self.pre_concept_model.relu(x)
@@ -224,7 +217,6 @@ class ConceptEmbeddingModel(ConceptBottleneckModel):
             c=None,
             y=None,
             l=None,
-            x_=None,
             train=False,
             latent=None,
             intervention_idxs=None,
@@ -332,19 +324,5 @@ class ConceptEmbeddingModel(ConceptBottleneckModel):
             print(f"output_embedding")
             tail_results.append(contexts[:, :, :self.emb_size])
             tail_results.append(contexts[:, :, self.emb_size:])
-
-        current_time = time.time()
-        random.seed(current_time)
-        if not train and self.output_image and self.current_epoch >= 50:
-            logging_time = time.strftime('%H-%M-%S', time.localtime())
-            save_dir = os.path.join(f"heatmap", f"{logging_time}")
-            visualize_and_save_heatmaps(
-                x_.detach().cpu(),
-                heatmap.detach().cpu(),
-                sample_index=random.randint(0, len(x_)),
-                output_dir=save_dir,
-                data_save_path='saved_data.pth'
-            )
-            self.output_image = False
 
         return tuple([c_sem, c_pred, c_pred_unlabeled, y] + tail_results)

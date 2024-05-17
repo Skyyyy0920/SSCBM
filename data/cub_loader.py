@@ -5,6 +5,7 @@ import pickle
 import logging
 import numpy as np
 import torchvision.transforms as transforms
+from tqdm import tqdm
 from pytorch_lightning import seed_everything
 from torchvision.models import resnet50
 from sklearn.neighbors import NearestNeighbors
@@ -795,7 +796,6 @@ class CUBDataset(Dataset):
         model = resnet50(pretrained=True).to(device)
         model.eval()
 
-        from tqdm import tqdm
         imgs = []
         for img_data in tqdm(self.data):
             img_path = img_data['img_path']
@@ -872,12 +872,6 @@ class CUBDataset(Dataset):
         )
         img = Image.open(img_path).convert('RGB')
 
-        transform = transforms.Compose([
-            transforms.CenterCrop(299),
-            transforms.ToTensor(),  # implicitly divides by 255
-        ])
-        img_show = transform(img)
-
         class_label = img_data['class_label']
         if self.label_transform:
             class_label = self.label_transform(class_label)
@@ -888,7 +882,7 @@ class CUBDataset(Dataset):
         if self.concept_transform is not None:
             attr_label = self.concept_transform(attr_label)
 
-        return img, img_show, class_label, torch.FloatTensor(attr_label), torch.tensor(l), nbr_concepts, nbr_weight
+        return img, class_label, torch.FloatTensor(attr_label), torch.tensor(l), nbr_concepts, nbr_weight
 
 
 class ImbalancedDatasetSampler(torch.utils.data.sampler.Sampler):
@@ -952,49 +946,38 @@ def load_data(
         concept_transform=None,
         label_transform=None,
         path_transform=None,
-        is_chexpert=False,
 ):
     """
     Note: Inception needs (299,299,3) images with inputs scaled between -1 and 1
     Loads data with transformations applied, and upsample the minority class if
     there is class imbalance and weighted loss is not used
-    NOTE: resampling is customized for first attribute only, so change
-    sampler.py if necessary
+    NOTE: resampling is customized for first attribute only, so change sampler.py if necessary
     """
     resized_resol = int(resol * 256 / 224)
     is_training = any(['train.pkl' in f for f in pkl_paths])
     if is_training:
-        if is_chexpert:
-            transform = transforms.Compose([
-                transforms.CenterCrop((320, 320)),
-                transforms.RandomHorizontalFlip(p=0.5),
-                transforms.ColorJitter(0.1),
-                transforms.ToTensor(),
-            ])
-        else:
-            transform = transforms.Compose([
-                transforms.ColorJitter(brightness=32 / 255, saturation=(0.5, 1.5)),
-                transforms.RandomResizedCrop(resol),
-                transforms.RandomHorizontalFlip(),
-                transforms.ToTensor(),  # implicitly divides by 255
-                transforms.Normalize(mean=[0.5, 0.5, 0.5], std=[2, 2, 2])
-            ])
+        transform = transforms.Compose([
+            transforms.ColorJitter(brightness=32 / 255, saturation=(0.5, 1.5)),
+            transforms.RandomResizedCrop(resol),
+            transforms.RandomHorizontalFlip(),
+            transforms.ToTensor(),  # implicitly divides by 255
+            transforms.Normalize(mean=[0.5, 0.5, 0.5], std=[2, 2, 2])
+        ])
     else:
-        if is_chexpert:
-            transform = transforms.Compose([
-                transforms.CenterCrop((320, 320)),
-                transforms.ToTensor(),
-            ])
-        else:
-            transform = transforms.Compose([
-                transforms.CenterCrop(resol),
-                transforms.ToTensor(),  # implicitly divides by 255
-                transforms.Normalize(mean=[0.5, 0.5, 0.5], std=[2, 2, 2])
-            ])
+        transform = transforms.Compose([
+            transforms.CenterCrop(resol),
+            transforms.ToTensor(),  # implicitly divides by 255
+            transforms.Normalize(mean=[0.5, 0.5, 0.5], std=[2, 2, 2])
+        ])
+
+    # transform = transforms.Compose([
+    #     transforms.CenterCrop(299),
+    #     transforms.ToTensor(),  # implicitly divides by 255
+    # ])
 
     dataset = CUBDataset(
         labeled_ratio=labeled_ratio,
-        seed=42,
+        seed=seed,
         training=training,
         pkl_file_paths=pkl_paths,
         no_img=no_img,

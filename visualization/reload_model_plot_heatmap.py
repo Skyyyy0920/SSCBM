@@ -144,5 +144,20 @@ if __name__ == '__main__':
                 activation_freq=args.activation_freq,
                 single_frequency_epochs=args.single_frequency_epochs,
             )
+    import time
+    import random
+    current_time = time.time()
+    random.seed(current_time)
+    if not train and self.output_image and self.current_epoch >= 50:
+        logging_time = time.strftime('%H-%M-%S', time.localtime())
+        save_dir = os.path.join(f"heatmap", f"{logging_time}")
+        visualize_and_save_heatmaps(
+            x_.detach().cpu(),
+            heatmap.detach().cpu(),
+            sample_index=random.randint(0, len(x_)),
+            output_dir=save_dir,
+            data_save_path='saved_data.pth'
+        )
+        self.output_image = False
 
     print(f"========================finish========================")
