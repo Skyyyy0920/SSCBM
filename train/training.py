@@ -25,8 +25,7 @@ def _evaluate_cbm(
 ):
     eval_results = {}
     for (current_dl, dl_name) in [(val_dl, "val"), (test_dl, "test")]:
-        if current_dl is None:
-            pass
+        logging.info(f"{dl_name}")
         model.freeze()
 
         def _inner_call():
@@ -110,6 +109,10 @@ def train_end_to_end_model(
 
     full_run_name = "test"
 
+    logging.info(f"Training ***{run_name}***")
+    for key, val in config.items():
+        logging.info(f"{key} -> {val}")
+
     # create model
     model = construct_model(
         n_concepts,
@@ -118,8 +121,9 @@ def train_end_to_end_model(
         imbalance=imbalance,
         task_class_weights=task_class_weights,
     )
+    logging.info(f"{model}")
     logging.info(f"Number of parameters in model: {sum(p.numel() for p in model.parameters() if p.requires_grad)}")
-    logging.info(f"[Number of non-trainable parameters in model: "
+    logging.info(f"Number of non-trainable parameters in model: "
                  f"{sum(p.numel() for p in model.parameters() if not p.requires_grad)}")
 
     if config.get("model_pretrain_path"):
@@ -141,7 +145,7 @@ def train_end_to_end_model(
         accelerator=accelerator,
         devices=devices,
         max_epochs=config['max_epochs'],
-        check_val_every_n_epoch=config.get("check_val_every_n_epoch", 10),
+        check_val_every_n_epoch=config.get("check_val_every_n_epoch", 5),
         # callbacks=callbacks,
         logger=logger or False,
         enable_checkpointing=enable_checkpointing,
@@ -165,7 +169,7 @@ def train_end_to_end_model(
 
     model_saved_path = os.path.join(result_dir or ".", f'{full_run_name}.pt')
     if not rerun and os.path.exists(model_saved_path):
-        print("\tFound cached model... loading it")
+        logging.info("Found cached model... loading it")
         model.load_state_dict(torch.load(model_saved_path))
         if os.path.exists(model_saved_path.replace(".pt", "_training_times.npy")):
             [training_time, num_epochs] = np.load(model_saved_path.replace(".pt", "_training_times.npy"))
@@ -187,10 +191,7 @@ def train_end_to_end_model(
                 not isinstance(config_copy["c_extractor_arch"], str)
         ):
             del config_copy["c_extractor_arch"]
-        joblib.dump(config_copy, os.path.join(
-            result_dir,
-            f'{run_name}_experiment_config.joblib'
-        ))
+        joblib.dump(config_copy, os.path.join(result_dir, f'{run_name}_experiment_config.joblib'))
     eval_results = _evaluate_cbm(
         model=model,
         trainer=trainer,
@@ -204,11 +205,11 @@ def train_end_to_end_model(
     eval_results['training_time'] = training_time
     eval_results['num_epochs'] = num_epochs
     if test_dl is not None:
-        print(f'c_acc: {eval_results["test_acc_c"] * 100:.2f}%, '
-              f'y_acc: {eval_results["test_acc_y"] * 100:.2f}%, '
-              f'c_auc: {eval_results["test_auc_c"] * 100:.2f}%, '
-              f'y_auc: {eval_results["test_auc_y"] * 100:.2f}% with '
-              f'{num_epochs} epochs in {training_time:.2f} seconds')
+        logging.info(f'c_acc: {eval_results["test_acc_c"] * 100:.2f}%')
+        logging.info(f'y_acc: {eval_results["test_acc_y"] * 100:.2f}%')
+        logging.info(f'c_auc: {eval_results["test_auc_c"] * 100:.2f}%')
+        logging.info(f'y_auc: {eval_results["test_auc_y"] * 100:.2f}%')
+        logging.info(f'with {num_epochs} epochs in {training_time / 60:.2f} minutes')
 
     return model, eval_results
 

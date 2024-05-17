@@ -606,8 +606,7 @@ def fine_tune_coop(
         if os.path.exists(result_file):
             return joblib.load(result_file)
     intervention_accs = []
-    # If no concept groups are given, then we assume that all concepts
-    # represent a unitary group themselves
+    # If no concept groups are given, then we assume that all concepts represent a unitary group themselves
     concept_group_map = concept_group_map or dict(
         [(i, [i]) for i in range(n_concepts)]
     )
@@ -678,13 +677,12 @@ def fine_tune_coop(
                             val_dl,
                             verbose=False,
                         )
-                    intervention_accs.append(test_results['test_y_accuracy'])
-                print("\tValidation accuracies are:", intervention_accs)
+                    intervention_accs.append(test_results['test_y_acc'])
+                logging.info(f"Validation accuracies are: {intervention_accs}")  # TODO
                 grid_search_results.append((used_params, intervention_accs))
 
     # Sort the results in descending order of their weighted accuracies over
-    # all the interventions (weighted by how many concepts we intervened over
-    # all concepts)
+    # all the interventions (weighted by how many concepts we intervened over all concepts)
     acc_weights = 1 - (np.array(intervened_groups) / len(concept_group_map))
     grid_search_results = sorted(
         grid_search_results,

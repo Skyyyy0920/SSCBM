@@ -167,7 +167,6 @@ class ConceptEmbeddingModel(ConceptBottleneckModel):
         self.tau = tau
         self.use_concept_groups = use_concept_groups
 
-        self.resnet = resnet18(weights=ResNet18_Weights.DEFAULT)
         self.fc = nn.Linear(512, self.emb_size)
 
         self.pooling = nn.AdaptiveAvgPool2d(1)
@@ -203,15 +202,15 @@ class ConceptEmbeddingModel(ConceptBottleneckModel):
         return prob * (1 - intervention_idxs) + intervention_idxs * c_true, intervention_idxs
 
     def unlabeled_image_encoder(self, x):
-        x = self.resnet.conv1(x)
-        x = self.resnet.bn1(x)
-        x = self.resnet.relu(x)
-        x = self.resnet.maxpool(x)
+        x = self.pre_concept_model.conv1(x)
+        x = self.pre_concept_model.bn1(x)
+        x = self.pre_concept_model.relu(x)
+        x = self.pre_concept_model.maxpool(x)
 
-        x = self.resnet.layer1(x)
-        x = self.resnet.layer2(x)
-        x = self.resnet.layer3(x)
-        x = self.resnet.layer4(x)
+        x = self.pre_concept_model.layer1(x)
+        x = self.pre_concept_model.layer2(x)
+        x = self.pre_concept_model.layer3(x)
+        x = self.pre_concept_model.layer4(x)
         x = x.transpose(1, 3)
         x = self.fc(x)
         return x

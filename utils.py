@@ -74,7 +74,7 @@ def update_config_with_dataset(
         attribute_count = np.zeros((max(n_tasks, 2),))
         samples_seen = 0
         for i, data in enumerate(train_dl):
-            _, y, _, _, _, _ = data
+            _, _, y, _, _, _, _ = data
             if n_tasks > 1:
                 y = torch.nn.functional.one_hot(y, num_classes=n_tasks).cpu().detach().numpy()
             else:
@@ -120,6 +120,7 @@ def generate_dataset_and_update_config(experiment_config, args):
         seed=42,
         labeled_ratio=experiment_config['labeled_ratio'],
     )
+    logging.info(f"imbalance: {imbalance}")
 
     intervention_config = experiment_config.get('intervention_config', {})
     acquisition_costs = None

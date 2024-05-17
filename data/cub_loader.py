@@ -778,7 +778,7 @@ class CUBDataset(Dataset):
                 count += 1
         logging.info(f"actual labeled ratio: {count / len(self.l_choice)}")
 
-        self.neighbor = self.nearest_neighbors_resnet(k=3)
+        self.neighbor = self.nearest_neighbors_resnet(k=2)
 
     def nearest_neighbors_resnet(self, k=3):
         """
@@ -832,22 +832,16 @@ class CUBDataset(Dataset):
         return [{'indices': idx, 'weights': w} for idx, w in zip(indices, weights)]
 
     def nearest_neighbors_clip(self, k=4):
-        import torch
         import clip
-        from PIL import Image
-        from torchvision.transforms import Compose, Resize, CenterCrop, ToTensor, Normalize
 
-        # 加载 CLIP 模型
         device = "cuda" if torch.cuda.is_available() else "cpu"
         model, preprocess = clip.load("ViT-B/32", device=device)
         model.eval()
 
         def extract_image_features(image_path):
-            # 加载并预处理图像
             image = Image.open(image_path)
             image_input = preprocess(image).unsqueeze(0).to(device)
 
-            # 提取特征
             with torch.no_grad():
                 image_features = model.encode_image(image_input)
 
@@ -855,7 +849,7 @@ class CUBDataset(Dataset):
 
         image_path = "path_to_your_image.jpg"
         image_features = extract_image_features(image_path)
-        print(image_features.shape)  # 输出特征的形状
+        print(image_features.shape)
 
     def __len__(self):
         return len(self.data)
@@ -890,10 +884,7 @@ class CUBDataset(Dataset):
         if self.transform:
             img = self.transform(img)
 
-        if self.uncertain_label:
-            attr_label = img_data['uncertain_attribute_label']
-        else:
-            attr_label = img_data['attribute_label']
+        attr_label = img_data['attribute_label']
         if self.concept_transform is not None:
             attr_label = self.concept_transform(attr_label)
 
@@ -901,8 +892,8 @@ class CUBDataset(Dataset):
 
 
 class ImbalancedDatasetSampler(torch.utils.data.sampler.Sampler):
-    """Samples elements randomly from a given list of indices for
-    imbalanced data
+    """
+    Samples elements randomly from a given list of indices for imbalanced data
     Arguments:
         indices (list, optional): a list of indices
         num_samples (int, optional): number of samples to draw

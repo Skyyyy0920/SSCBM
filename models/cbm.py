@@ -154,9 +154,14 @@ class ConceptBottleneckModel(pl.LightningModule):
         elif len(batch) == 6:
             x, x_, y, c, competencies, prev_interventions = batch
             l, nbr_c, nbr_w = None, None, None
-        else:
+        elif len(batch) == 7:
             x, x_, y, c, l, nbr_c, nbr_w = batch
             competencies, prev_interventions = None, None
+        elif len(batch) == 8:
+            x, x_, y, c, l, nbr_c, nbr_w,competencies = batch
+            prev_interventions = None
+        else:
+            x, x_, y, c, l, nbr_c, nbr_w, competencies, prev_interventions = batch
         return x, x_, y, c, l, nbr_c, nbr_w, competencies, prev_interventions
 
     def _standardize_indices(self, intervention_idxs, batch_size):
@@ -482,8 +487,7 @@ class ConceptBottleneckModel(pl.LightningModule):
         concept_loss_labeled = self.loss_concept_labeled(c_sem[l], c[l])
         concept_loss_scalar_labeled = concept_loss_labeled.detach()
 
-        # concept_loss_unlabeled = self.loss_concept_unlabeled(c_pred_unlabeled[~l], c_pseudo[~l])
-        concept_loss_unlabeled = self.loss_concept_unlabeled(c_pred_unlabeled, c_pseudo)
+        concept_loss_unlabeled = self.loss_concept_unlabeled(c_pred_unlabeled[~l], c_pseudo[~l])
         concept_loss_scalar_unlabeled = concept_loss_unlabeled.detach()
 
         loss = task_loss + \
