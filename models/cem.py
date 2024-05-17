@@ -1,3 +1,6 @@
+import os
+import time
+import random
 import torch
 from torch import nn
 import numpy as np
@@ -330,14 +333,15 @@ class ConceptEmbeddingModel(ConceptBottleneckModel):
             tail_results.append(contexts[:, :, :self.emb_size])
             tail_results.append(contexts[:, :, self.emb_size:])
 
+        current_time = time.time()
+        random.seed(current_time)
         if not train and self.output_image and self.current_epoch >= 50:
-            import os, time
             logging_time = time.strftime('%H-%M-%S', time.localtime())
             save_dir = os.path.join(f"heatmap", f"{logging_time}")
             visualize_and_save_heatmaps(
                 x_.detach().cpu(),
                 heatmap.detach().cpu(),
-                sample_index=np.random.randint(0, len(x_)),
+                sample_index=random.randint(0, len(x_)),
                 output_dir=save_dir,
                 data_save_path='saved_data.pth'
             )

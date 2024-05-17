@@ -975,7 +975,7 @@ def load_data(
             transform = transforms.Compose([
                 transforms.ColorJitter(brightness=32 / 255, saturation=(0.5, 1.5)),
                 transforms.RandomResizedCrop(resol),
-                transforms.RandomHorizontalFlip(),
+                # transforms.RandomHorizontalFlip(),
                 transforms.ToTensor(),  # implicitly divides by 255
                 transforms.Normalize(mean=[0.5, 0.5, 0.5], std=[2, 2, 2])
             ])

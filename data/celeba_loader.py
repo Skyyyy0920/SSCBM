@@ -127,11 +127,8 @@ def generate_data(
         print(celeba_train_data)
         exit()
 
-        concept_freq = np.sum(
-            celeba_train_data.attr.cpu().detach().numpy(),
-            axis=0
-        ) / celeba_train_data.attr.shape[0]
-        logging.debug(f"Concept frequency is: {concept_freq}")
+        concept_freq = np.sum(celeba_train_data.attr.cpu().detach().numpy(), axis=0) / celeba_train_data.attr.shape[0]
+        logging.info(f"Concept frequency is: {concept_freq}")
         sorted_concepts = list(map(
             lambda x: x[0],
             sorted(enumerate(np.abs(concept_freq - 0.5)), key=lambda x: x[1]),
@@ -154,8 +151,8 @@ def generate_data(
             )
         else:
             hidden_concepts = []
-        logging.debug(f"Selecting concepts: {concept_idxs}")
-        logging.debug(f"\tAnd hidden concepts: {hidden_concepts}")
+        logging.info(f"Selecting concepts: {concept_idxs}")
+        logging.info(f"\tAnd hidden concepts: {hidden_concepts}")
         celeba_train_data = torchvision.datasets.CelebA(
             root=root_dir,
             split='all',
@@ -229,7 +226,7 @@ def generate_data(
                 replace=False,
                 size=len(celeba_train_data) // factor,
             )
-            logging.debug(f"Subsampling to {len(train_idxs)} elements.")
+            logging.info(f"Subsampling to {len(train_idxs)} elements.")
             celeba_train_data = torch.utils.data.Subset(
                 celeba_train_data,
                 train_idxs,
@@ -257,9 +254,7 @@ def generate_data(
             lambda x: x[0],
             sorted(zip(vals, counts), key=lambda x: -x[1])
         ))
-        logging.debug(
-            f"Selecting {config['num_classes']} out of {len(vals)} classes"
-        )
+        logging.info(f"Selecting {config['num_classes']} out of {len(vals)} classes")
         result_dir = config.get('result_dir', None)
         if result_dir:
             Path(result_dir).mkdir(parents=True, exist_ok=True)
@@ -317,7 +312,7 @@ def generate_data(
     train_samples = int(0.7 * total_samples)
     test_samples = int(0.2 * total_samples)
     val_samples = total_samples - test_samples - train_samples
-    logging.debug(
+    logging.info(
         f"Data split is: {total_samples} = {train_samples} (train) + "
         f"{test_samples} (test) + {val_samples} (validation)"
     )
