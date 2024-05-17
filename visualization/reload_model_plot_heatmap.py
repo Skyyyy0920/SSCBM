@@ -40,12 +40,6 @@ class CUBDataset_for_heatmap(Dataset):
 
     def __getitem__(self, idx):
         img_data = self.data[idx]
-        neighbor_info = self.neighbor[idx]
-        neighbor_indices = neighbor_info['indices']
-        nbr_concepts = []
-        for idx in neighbor_indices:
-            nbr_concepts.append(self.data[idx]['attribute_label'])
-
         img_path = img_data['img_path']
         img_path = img_path.replace(
             '/juice/scr/scr102/scr/thaonguyen/CUB_supervision/datasets/',
@@ -154,7 +148,7 @@ if __name__ == '__main__':
     with open(f"configs/{args.dataset}.yaml", "r") as f:
         experiment_config = yaml.load(f, Loader=yaml.FullLoader)
 
-    experiment_config["model_pretrain_path"] = "../saved_checkpoints/CUB-200-2011_12-32/test.pt"
+    experiment_config["model_pretrain_path"] = "./checkpoints/labeled-ratio-20/test.pt"
 
     dataset_config = experiment_config['dataset_config']
     if args.dataset == "CUB-200-2011":
@@ -239,11 +233,11 @@ if __name__ == '__main__':
                 root_dir=root_dir,
             )
 
-            loader = DataLoader(dataset, batch_size=32, shuffle=True, drop_last=False, num_workers=64)
+            loader = DataLoader(dataset, batch_size=256, shuffle=True, drop_last=False, num_workers=64)
 
             for b_idx, batch in enumerate(loader):
                 x, x_show, c, y, img_name = batch
-                model.plot_heatmap(x, x_show, c, y, img_name)
+                model.plot_heatmap(x, x_show, c, y, img_name, f"{save_dir}/heatmap")
                 break
 
     print(f"========================finish========================")
