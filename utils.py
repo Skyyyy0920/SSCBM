@@ -218,8 +218,10 @@ def evaluate_expressions(config, parent_config=None, soft=False):
 
 def visualize_and_save_heatmaps(
         x,
+        c_ground_truth,
         heatmap,
         output_dir='output_images',
+        concept_set=None,
 ):
     """
     x (torch.Tensor): [channels, height, width]
@@ -258,13 +260,12 @@ def visualize_and_save_heatmaps(
 
         # 叠加蒙版到原始图像上
         overlay = image.copy()
-        for c in range(3):
-            overlay[..., c] = image[..., c] * (1 - alpha) + red_mask[..., c] * alpha
-            # overlay[..., c] = np.clip(image[..., c] * (1 - alpha) + red_mask[..., c] * alpha, 0, 1)
+        for chn in range(3):
+            overlay[..., chn] = image[..., chn] * (1 - alpha) + red_mask[..., chn] * alpha
 
         plt.imshow(overlay)
         plt.axis('off')
-        plt.title(f'Heatmap {i + 1}')
+        plt.title(f'{concept_set[i]} [{c_ground_truth[i]}]')
         plt.tight_layout()
-        plt.savefig(os.path.join(output_dir, f'heatmap_{i + 1}.png'))
+        plt.savefig(os.path.join(output_dir, f'{concept_set[i]}'))
         plt.close()

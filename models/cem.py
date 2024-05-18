@@ -336,6 +336,7 @@ class ConceptEmbeddingModel(ConceptBottleneckModel):
             y=None,
             img_name=None,
             output_dir='heatmap',
+            concept_set=None,
     ):
         pre_c = self.pre_concept_model(x)
         contexts = []
@@ -367,4 +368,4 @@ class ConceptEmbeddingModel(ConceptBottleneckModel):
 
         for i in range(len(x)):
             save_dir = f"./{output_dir}/{img_name[i]}"
-            visualize_and_save_heatmaps(x_show[i], heatmap[i], save_dir)
+            visualize_and_save_heatmaps(x_show[i], c[i], heatmap[i], save_dir, concept_set)

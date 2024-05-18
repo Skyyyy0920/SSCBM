@@ -1,3 +1,4 @@
+import pylab as pl
 import yaml
 import re
 import zipfile
@@ -15,6 +16,7 @@ from pytorch_lightning import seed_everything
 from PIL import Image
 from torch.utils.data import Dataset, DataLoader, random_split
 import torchvision.transforms as transforms
+from data.cub_loader import CONCEPT_SEMANTICS, SELECTED_CONCEPTS
 
 
 class CUBDataset_for_heatmap(Dataset):
@@ -138,6 +140,7 @@ def load_evaluate_model(
 
 
 if __name__ == '__main__':
+    pl.seed_everything(1897985)
     logging.info(f"Reload the trained model to plot the heatmap!")
     args = get_args()
     logging_time = time.strftime('%H-%M', time.localtime())
@@ -174,7 +177,7 @@ if __name__ == '__main__':
 
     train_dl, val_dl, test_dl, imbalance, (n_concepts, n_tasks, concept_map) = data_module.generate_data(
         config=dataset_config,
-        seed=42,
+        seed=429,
         labeled_ratio=experiment_config['labeled_ratio'],
     )
     logging.info(f"imbalance: {imbalance}")
@@ -209,7 +212,7 @@ if __name__ == '__main__':
                 train_dl=train_dl,
                 val_dl=val_dl,
                 test_dl=test_dl,
-                seed=42,
+                seed=429,
                 imbalance=imbalance,
                 gradient_clip_val=run_config.get('gradient_clip_val', 0),
             )
@@ -234,10 +237,10 @@ if __name__ == '__main__':
             )
 
             loader = DataLoader(dataset, batch_size=256, shuffle=True, drop_last=False, num_workers=64)
-
+            concept_set = np.array(CONCEPT_SEMANTICS)[SELECTED_CONCEPTS]
             for b_idx, batch in enumerate(loader):
-                x, x_show, c, y, img_name = batch
-                model.plot_heatmap(x, x_show, c, y, img_name, f"{save_dir}/heatmap")
+                x, x_show, y, c, img_name = batch
+                model.plot_heatmap(x, x_show, c, y, img_name, f"{save_dir}/heatmap", concept_set)
                 break
 
     print(f"========================finish========================")

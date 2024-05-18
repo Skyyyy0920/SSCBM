@@ -656,8 +656,7 @@ CONCEPT_SEMANTICS = [
     "has_wing_pattern::multi-colored",
 ]
 
-# Generate a mapping containing all concept groups in CUB generated
-# using a simple prefix tree
+# Generate a mapping containing all concept groups in CUB generated using a simple prefix tree
 CONCEPT_GROUP_MAP = defaultdict(list)
 for i, concept_name in enumerate(list(
         np.array(CONCEPT_SEMANTICS)[SELECTED_CONCEPTS]
