@@ -151,7 +151,7 @@ if __name__ == '__main__':
     with open(f"configs/{args.dataset}.yaml", "r") as f:
         experiment_config = yaml.load(f, Loader=yaml.FullLoader)
 
-    experiment_config["model_pretrain_path"] = "./checkpoints/labeled-ratio-20/test.pt"
+    experiment_config["model_pretrain_path"] = "./checkpoints/labeled-ratio-80/test.pt"
 
     dataset_config = experiment_config['dataset_config']
     if args.dataset == "CUB-200-2011":

@@ -118,7 +118,7 @@ def generate_dataset_and_update_config(experiment_config, args):
     train_dl, val_dl, test_dl, imbalance, (n_concepts, n_tasks, concept_map) = data_module.generate_data(
         config=dataset_config,
         seed=42,
-        labeled_ratio=experiment_config['labeled_ratio'],
+        labeled_ratio=args.labeled_ratio,
     )
     logging.info(f"imbalance: {imbalance}")
 

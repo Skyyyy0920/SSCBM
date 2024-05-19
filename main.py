@@ -47,6 +47,17 @@ if __name__ == '__main__':
         acquisition_costs
     ) = generate_dataset_and_update_config(experiment_config, args)
 
+    # from torch.utils.data import Subset, DataLoader
+    #
+    # train_dataset = train_dl.dataset
+    # labeled_ratio = 0.1
+    # num_samples = len(train_dataset)
+    # num_keep = int(num_samples * labeled_ratio)
+    # indices = np.random.permutation(num_samples)[:num_keep]
+    # remain_set = Subset(train_dataset, indices)
+    # batch_size = 128
+    # train_dl = DataLoader(remain_set, batch_size=batch_size, shuffle=True, drop_last=False)
+
     # ==================================================================================================
     # 4. Build models, define overall loss and optimizer. Then training
     # ==================================================================================================

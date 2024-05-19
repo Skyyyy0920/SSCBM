@@ -3,6 +3,18 @@ import numpy as np
 import os
 import torch
 import torchvision
+from torch.utils.data import Dataset
+from tqdm import tqdm
+from PIL import Image
+from collections import defaultdict
+
+import random
+import pickle
+import logging
+from pytorch_lightning import seed_everything
+from torchvision.models import resnet50
+from sklearn.neighbors import NearestNeighbors
+from torch.utils.data import Dataset, DataLoader, random_split
 
 from pathlib import Path
 from pytorch_lightning import seed_everything
@@ -89,6 +101,106 @@ CONCEPT_SEMANTICS = [
 
 
 ##########################################################
+# Self-defined Dataset
+##########################################################\
+
+class CelebaDataset(Dataset):
+    def __init__(self, ds, labeled_ratio, training,
+                 seed=42, transform=None,
+                 concept_transform=None, label_transform=None):
+        self.ds = ds
+        self.transform = transform
+        self.concept_transform = concept_transform
+        self.label_transform = label_transform
+        self.l_choice = defaultdict(bool)
+
+        if training:
+            random.seed(seed)
+            class_count = defaultdict(int)
+            for img_data in self.ds:
+                class_count[img_data[1][0].item()] += 1
+
+            labeled_count = defaultdict(int)
+            for idx, img_data in enumerate(self.ds):
+                class_label = img_data[1][0].item()
+                if labeled_count[class_label] < labeled_ratio * class_count[class_label]:
+                    self.l_choice[idx] = True
+                    labeled_count[class_label] += 1
+                else:
+                    self.l_choice[idx] = False
+        else:
+            for idx in range(len(self.ds)):
+                self.l_choice[idx] = True
+
+        count = 0
+        for idx in range(len(self.l_choice)):
+            if self.l_choice[idx]:
+                count += 1
+        logging.info(f"actual labeled ratio: {count / len(self.l_choice)}")
+
+        self.neighbor = self.nearest_neighbors_resnet(k=2)
+
+    def nearest_neighbors_resnet(self, k=3):
+        device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+        model = resnet50(pretrained=True).to(device)
+        model.eval()
+        imgs = []
+        for d in self.ds:
+            imgs.append(d[0][None, :, :, :])
+        imgs_tensor = torch.cat(imgs, dim=0)
+        imgs_tensor = imgs_tensor.to(device)
+        num_chunks = 10
+        chunked_tensors = torch.chunk(imgs_tensor, num_chunks, dim=0)
+
+        features = []
+        with torch.no_grad():
+            for chunk in tqdm(chunked_tensors):
+                features.append(model(chunk))
+        features = torch.cat(features, dim=0)
+        features = features.detach().cpu().numpy()
+        labeled_features = []
+        for idx in range(len(features)):
+            if self.l_choice[idx]:
+                labeled_features.append(features[idx])
+        labeled_features = np.array(labeled_features)
+        nbrs = NearestNeighbors(n_neighbors=k, metric='cosine')
+        nbrs.fit(labeled_features)
+        distances, indices = nbrs.kneighbors(features)
+
+        weights = 1.0 / (distances + 1e-6)
+        weights = weights / np.sum(weights, axis=1, keepdims=True)
+
+        return [{'indices': idx, 'weights': w} for idx, w in zip(indices, weights)]
+
+    def __len__(self):
+        return len(self.ds)
+
+    def __getitem__(self, idx):
+        img_data = self.ds[idx]
+        l = self.l_choice[idx]
+        neighbor_info = self.neighbor[idx]
+        neighbor_indices = neighbor_info['indices']
+        nbr_concepts = []
+        # print(len(neighbor_indices))
+        for idx in neighbor_indices:
+            # What is the attribute_label?
+            # print(self.ds[idx][1][1])
+            nbr_concepts.append(self.ds[idx][1][1].unsqueeze(0))
+        nbr_concepts = torch.concat(nbr_concepts, dim=0)
+        nbr_weight = torch.from_numpy(neighbor_info['weights'])
+
+        class_label = img_data[1][0]
+        if self.label_transform:
+            class_label = self.label_transform(class_label)
+
+        attr_label = img_data[1][1]
+        if self.concept_transform is not None:
+            attr_label = self.concept_transform(attr_label)
+
+        return img_data[0], class_label, torch.FloatTensor(attr_label), torch.tensor(l), nbr_concepts, nbr_weight
+
+
+##########################################################
 # SIMPLIFIED LOADER FUNCTION FOR STANDARDIZATION
 ##########################################################
 
@@ -123,9 +235,6 @@ def generate_data(
             target_transform=lambda x: x[0].long() - 1,
             target_type=['attr'],
         )
-
-        print(celeba_train_data)
-        exit()
 
         concept_freq = np.sum(celeba_train_data.attr.cpu().detach().numpy(), axis=0) / celeba_train_data.attr.shape[0]
         logging.info(f"Concept frequency is: {concept_freq}")
@@ -321,6 +430,16 @@ def generate_data(
             celeba_train_data,
             [train_samples, test_samples, val_samples],
         )
+    # for d in celeba_train_data:
+    # print(d)
+    # break
+    celeba_train_data = CelebaDataset(celeba_train_data, labeled_ratio=labeled_ratio,
+                                      training=True, seed=seed)
+    celeba_val_data = CelebaDataset(celeba_val_data, labeled_ratio=1., training=False, seed=seed)
+    celeba_test_data = CelebaDataset(celeba_test_data, labeled_ratio=1., training=False, seed=seed)
+    # for d in celeba_train_data:
+    # print(d)
+    # break
     train_dl = torch.utils.data.DataLoader(
         celeba_train_data,
         batch_size=config['batch_size'],
@@ -352,8 +471,8 @@ def generate_data(
         imbalance = samples_seen / attribute_count - 1
     else:
         imbalance = None
-    if not output_dataset_vars:
-        return train_dl, val_dl, test_dl, imbalance
+    # if not output_dataset_vars:
+    #     return train_dl, val_dl, test_dl, imbalance
     return (
         train_dl,
         val_dl,

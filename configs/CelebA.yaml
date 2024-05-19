@@ -1,5 +1,3 @@
-trials: 5
-results_dir: results/celeba/
 model_selection_groups:
   - [ "^CEM", "CEM" ]
   - [ "^IntCEM(.*)", "IntCEM" ]
@@ -57,11 +55,12 @@ intervention_config:
 skip_repr_evaluation: True
 top_k_accuracy: [ 3, 5, 10 ]
 save_model: True
-max_epochs: 200
+max_epochs: 100
 patience: 15
-emb_size: 16
+emb_size: 32
 extra_dims: 0
-concept_loss_weight: 1
+concept_loss_weight_labeled: 1
+concept_loss_weight_unlabeled: 0.1
 learning_rate: 0.005
 weight_decay: 0.000004
 weight_loss: False
@@ -75,62 +74,9 @@ momentum: 0.9
 sigmoidal_prob: False
 training_intervention_prob: 0.25
 
-labeled_ratio: 0.1
-
-
 runs:
   - architecture: 'ConceptEmbeddingModel'
     run_name: "CEM"
     sigmoidal_prob: True
     training_intervention_prob: 0.25
     embedding_activation: "leakyrelu"
-
-  - architecture: "IntAwareConceptEmbeddingModel"
-    run_name: "IntCEM_intervention_weight_{intervention_weight}_intervention_task_discount_{intervention_task_discount}"
-    training_intervention_prob: 0.25
-    intervention_weight: [ 0.1, 1, 5 ]
-    intervention_task_discount: [ 1.1, 1.5 ]
-    use_concept_groups: True
-    int_model_use_bn: True
-    int_model_layers: [ 128, 128, 64, 64 ]
-    embedding_activation: "leakyrelu"
-    max_horizon: 6
-    horizon_rate: 1.005
-    gradient_clip_val: 100
-    grid_variables:
-      - intervention_task_discount
-      - intervention_weight
-    grid_search_mode: exhaustive
-
-  - architecture: 'ConceptBottleneckModel'
-    run_name: "CBM_Sigmoid"
-    training_intervention_prob: 0.25
-    embedding_activation: "leakyrelu"
-    bool: False
-    extra_dims: 0
-    sigmoidal_extra_capacity: False
-    sigmoidal_prob: True
-
-  - architecture: 'ConceptBottleneckModel'
-    run_name: "CBM_Logit"
-    embedding_activation: "leakyrelu"
-    bool: False
-    extra_dims: 0
-    sigmoidal_extra_capacity: False
-    sigmoidal_prob: False
-
-  - architecture: 'SequentialConceptBottleneckModel'
-    run_name: "CBM_Seq"
-    embedding_activation: "leakyrelu"
-    bool: False
-    extra_dims: 0
-    sigmoidal_extra_capacity: False
-    sigmoidal_prob: True
-
-  - architecture: 'IndependentConceptBottleneckModel'
-    run_name: "CBM_Ind"
-    embedding_activation: "leakyrelu"
-    bool: False
-    extra_dims: 0
-    sigmoidal_extra_capacity: False
-    sigmoidal_prob: True
