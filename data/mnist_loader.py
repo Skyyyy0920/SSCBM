@@ -5,11 +5,75 @@ import random
 import sklearn.model_selection
 import torch
 import torchvision
-import torchvision.transforms as transforms
 from pytorch_lightning import seed_everything
-from torchvision.models import resnet50
-from sklearn.neighbors import NearestNeighbors
 from torch.utils.data import Dataset, TensorDataset, DataLoader, random_split
+
+
+def get_ss_components(xs, ys, cs, labeled_ratio, training=False, seed=42):
+    from collections import defaultdict
+    from sklearn.neighbors import NearestNeighbors
+
+    def nearest_neighbors(xs, l_choice, k=3):
+        size = xs.shape[0]
+        features = xs.copy().reshape(size, -1)
+        labeled_features = []
+        for idx in range(size):
+            if l_choice[idx]:
+                labeled_features.append(features[idx])
+        labeled_features = np.array(labeled_features)
+        nbrs = NearestNeighbors(n_neighbors=k, metric='cosine')
+        nbrs.fit(labeled_features)
+        distances, indices = nbrs.kneighbors(features)
+
+        weights = 1.0 / (distances + 1e-6)
+        weights = weights / np.sum(weights, axis=1, keepdims=True)
+
+        return [{'indices': idx, 'weights': w} for idx, w in zip(indices, weights)]
+
+    l_choice = defaultdict(bool)
+    if training:
+        random.seed(seed)
+        class_count = defaultdict(int)
+        for y in ys:
+            class_count[y] += 1
+        labeled_count = defaultdict(int)
+        for idx, y in enumerate(ys):
+            class_label = y
+            if labeled_count[class_label] < labeled_ratio * class_count[class_label]:
+                l_choice[idx] = True
+                labeled_count[class_label] += 1
+            else:
+                l_choice[idx] = False
+    else:
+        for idx in range(len(ys)):
+            l_choice[idx] = True
+
+    count = 0
+    for idx in range(len(l_choice)):
+        if l_choice[idx]:
+            count += 1
+    logging.info(f"actual labeled ratio: {count / len(l_choice)}")
+
+    nbrs = nearest_neighbors(xs, l_choice, k=2)
+
+    l_list, nbr_concepts_list, nbr_weights_list = [], [], []
+    for i in range(len(ys)):
+        l = l_choice[idx]
+        nbr_info = nbrs[idx]
+        nbr_indices = nbr_info['indices']
+        nbr_concepts = []
+        for i in nbr_indices:
+            nbr_concepts.append(cs[i])
+        nbr_concepts = np.array(nbr_concepts)
+        nbr_weights = nbr_info['weights']
+
+        l_list.append(l)
+        nbr_concepts_list.append(nbr_concepts)
+        nbr_weights_list.append(nbr_weights)
+
+    l, nbr_concepts, nbr_weights = np.array(l_list), np.array(nbr_concepts_list), np.array(nbr_weights_list)
+    return torch.tensor(xs), torch.tensor(ys).squeeze(), torch.tensor(cs), \
+           torch.tensor(l), torch.tensor(nbr_concepts), torch.tensor(nbr_weights)
 
 
 def inject_uncertainty(
@@ -314,8 +378,10 @@ def load_mnist_addition(
     else:
         y_test = torch.LongTensor(y_test)
     c_test = torch.FloatTensor(c_test)
-    l_test = torch.ones(len(c_test), dtype=torch.bool)
-    test_data = torch.utils.data.TensorDataset(x_test, y_test, c_test, l_test, l_test, l_test)
+    x_test, y_test, c_test, l_test, ncs_test, nws_test = get_ss_components(
+        x_test.numpy(), y_test.numpy(), c_test.numpy(), labeled_ratio=1.
+    )
+    test_data = torch.utils.data.TensorDataset(x_test, y_test, c_test, l_test, ncs_test, nws_test)
     test_dl = DataLoader(test_data, batch_size=batch_size, num_workers=num_workers)
     if uncertain_width and (not even_concepts):
         [test_dl] = inject_uncertainty(
@@ -382,8 +448,9 @@ def load_mnist_addition(
         else:
             y_val = torch.LongTensor(y_val)
         c_val = torch.FloatTensor(c_val)
-        l_val = torch.ones(len(c_val), dtype=torch.bool)
-        val_data = torch.utils.data.TensorDataset(x_val, y_val, c_val, l_val, l_val, l_val)
+        x_val, y_val, c_val, l_val, ncs_val, nws_val = get_ss_components(
+            x_val.numpy(), y_val.numpy(), c_val.numpy(), labeled_ratio=1.)
+        val_data = torch.utils.data.TensorDataset(x_val, y_val, c_val, l_val, ncs_val, nws_val)
         val_dl = DataLoader(val_data, batch_size=batch_size, num_workers=num_workers)
         if uncertain_width and (not even_concepts):
             [val_dl] = inject_uncertainty(
@@ -420,56 +487,9 @@ def load_mnist_addition(
     else:
         y_train = torch.LongTensor(y_train)
     c_train = torch.FloatTensor(c_train)
-
-    np.random.seed(seed)
-    num_classes = torch.unique(y_train).size(0)
-    num_samples = len(y_train)
-
-    num_labeled_per_class = torch.zeros(num_classes, dtype=torch.long)
-    for class_label in range(num_classes):
-        class_indices = (y_train == class_label).nonzero(as_tuple=True)[0]
-        num_labeled_per_class[class_label] = int(labeled_ratio * len(class_indices))
-
-    l_train = torch.zeros(num_samples, dtype=torch.bool)
-
-    for class_label in range(num_classes):
-        class_indices = (y_train == class_label).nonzero(as_tuple=True)[0]
-        # labeled_indices = np.random.choice(class_indices, size=num_labeled_per_class[class_label], replace=False)
-        rand_indices = torch.randperm(len(class_indices))
-        labeled_indices = class_indices[rand_indices[:num_labeled_per_class[class_label]]]
-        l_train[labeled_indices] = True
-
-    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-    model = resnet50(pretrained=True).to(device)
-    model.eval()
-
-    from tqdm import tqdm
-
-    img_tensor = x_train.to(device)
-    num_chunks = 10
-    chunked_tensors = torch.chunk(img_tensor, num_chunks, dim=0)
-
-    features = []
-    with torch.no_grad():
-        for chunk in tqdm(chunked_tensors):
-            features.append(model(chunk))
-    features = torch.cat(features, dim=0)
-    features = features.detach().cpu().numpy()
-    labeled_features = []
-    for idx in range(len(features)):
-        if l_train[idx]:
-            labeled_features.append(features[idx])
-    labeled_features = np.array(labeled_features)
-    nbrs = NearestNeighbors(n_neighbors=3, metric='cosine')
-    nbrs.fit(labeled_features)
-    distances, indices = nbrs.kneighbors(features)
-
-    weights = 1.0 / (distances + 1e-6)
-    weights = weights / np.sum(weights, axis=1, keepdims=True)
-
-    ss = [{'indices': idx, 'weights': w} for idx, w in zip(indices, weights)]
-
-    train_data = torch.utils.data.TensorDataset(x_train, y_train, c_train, l_train, l_train, l_train)
+    x_train, y_train, c_train, l_train, ncs_train, nws_train = get_ss_components(
+        x_train.numpy(), y_train.numpy(), c_train.numpy(), labeled_ratio=labeled_ratio, training=True)
+    train_data = torch.utils.data.TensorDataset(x_train, y_train, c_train, l_train, ncs_train, nws_train)
     train_dl = DataLoader(train_data, batch_size=batch_size, num_workers=num_workers)
 
     if uncertain_width and (not even_concepts):
@@ -674,7 +694,7 @@ def get_mnist_extractor_arch(input_shape, num_operands):
             torch.nn.Linear(
                 int(np.prod(input_shape[2:])) * intermediate_maps,
                 output_dim,
-            ),
+            )
         ])
 
     return c_extractor_arch

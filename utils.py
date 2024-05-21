@@ -13,6 +13,7 @@ import matplotlib.pyplot as plt
 import data.cub_loader as cub_data_module
 import data.mnist_loader as mnist_data_module
 import data.celeba_loader as celeba_data_module
+import data.awa2_loader as awa_data_module
 from data.synthetic_loader import get_synthetic_data, get_synthetic_num_features, get_synthetic_extractor_arch
 
 os.environ["CUDA_VISIBLE_DEVICES"] = "0"
@@ -100,6 +101,8 @@ def generate_dataset_and_update_config(experiment_config, args):
         data_module = celeba_data_module
     elif args.dataset == "MNIST":
         data_module = mnist_data_module
+    elif args.dataset == "AwA2":
+        data_module = awa_data_module
     elif args.dataset in ["XOR", "vector", "Dot", "Trigonometric"]:
         data_module = get_synthetic_data(dataset_config["dataset"])
     else:
@@ -117,7 +120,7 @@ def generate_dataset_and_update_config(experiment_config, args):
 
     train_dl, val_dl, test_dl, imbalance, (n_concepts, n_tasks, concept_map) = data_module.generate_data(
         config=dataset_config,
-        seed=42,
+        seed=args.seed,
         labeled_ratio=args.labeled_ratio,
     )
     logging.info(f"imbalance: {imbalance}")

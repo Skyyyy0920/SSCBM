@@ -1,17 +1,13 @@
-import logging
 import numpy as np
 import os
 import torch
 import torchvision
 from torch.utils.data import Dataset
 from tqdm import tqdm
-from PIL import Image
 from collections import defaultdict
 
 import random
-import pickle
 import logging
-from pytorch_lightning import seed_everything
 from torchvision.models import resnet50
 from sklearn.neighbors import NearestNeighbors
 from torch.utils.data import Dataset, DataLoader, random_split
@@ -430,16 +426,12 @@ def generate_data(
             celeba_train_data,
             [train_samples, test_samples, val_samples],
         )
-    # for d in celeba_train_data:
-    # print(d)
-    # break
+
     celeba_train_data = CelebaDataset(celeba_train_data, labeled_ratio=labeled_ratio,
                                       training=True, seed=seed)
     celeba_val_data = CelebaDataset(celeba_val_data, labeled_ratio=1., training=False, seed=seed)
     celeba_test_data = CelebaDataset(celeba_test_data, labeled_ratio=1., training=False, seed=seed)
-    # for d in celeba_train_data:
-    # print(d)
-    # break
+
     train_dl = torch.utils.data.DataLoader(
         celeba_train_data,
         batch_size=config['batch_size'],
