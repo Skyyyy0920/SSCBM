@@ -1,6 +1,7 @@
 import matplotlib.pyplot as plt
 
 ratios = [1, 0.8, 0.6, 0.4, 0.2, 0.1, 0.05, 0.01]
+ratios = ratios[::-1]
 task_accuracy = [3.16, 19.61, 30.36, 43.84, 58.28, 65.1, 70.09, 79.82]
 concept_accuracy = [78.31, 84.73, 87.06, 89.58, 91.90, 93.20, 94.17, 96.39]
 
@@ -25,7 +26,7 @@ ax2.tick_params(axis='y', labelsize=28)
 plt.title('Task and Concept Accuracy (CUB)', fontsize=32)
 
 fig.tight_layout()
-fig.legend(loc='upper right', bbox_to_anchor=(0.95, 0.98), bbox_transform=ax1.transAxes, fontsize=28)
+fig.legend(loc='lower right', bbox_to_anchor=(0.95, 0.1), bbox_transform=ax1.transAxes, fontsize=28)
 
 plt.savefig('intro_acc.pdf', format='pdf')
 

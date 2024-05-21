@@ -228,7 +228,7 @@ class ConceptEmbeddingModel(ConceptBottleneckModel):
             output_interventions=None
     ):
         if latent is None:
-            pre_c = self.pre_concept_model(x)
+            pre_c = self.pre_concept_model(x)  # [batch_size, 299, 299] -> [batch_size, resnet_out_features]
             contexts = []
             c_sem = []
 
@@ -238,11 +238,11 @@ class ConceptEmbeddingModel(ConceptBottleneckModel):
                     prob_gen = self.concept_prob_generators[0]
                 else:
                     prob_gen = self.concept_prob_generators[i]
-                context = context_gen(pre_c)
-                prob = prob_gen(context)
+                context = context_gen(pre_c)  # [batch_size, resnet_out_features] -> [batch_size, 2 * emb_size]
+                prob = prob_gen(context)  # [batch_size, 2 * emb_size] -> [batch_size, 1]
                 contexts.append(torch.unsqueeze(context, dim=1))
                 c_sem.append(self.sigmoid(prob))
-            c_sem = torch.cat(c_sem, axis=-1)
+            c_sem = torch.cat(c_sem, axis=-1)  # [batch_size, 1, n_concepts] -> [batch_size, n_concepts]
             contexts = torch.cat(contexts, axis=1)
             latent = contexts, c_sem
         else:
@@ -304,13 +304,25 @@ class ConceptEmbeddingModel(ConceptBottleneckModel):
 
         # image_feature: [batch_size, H, W, D] (D is concept embedding size)
         # c_embedding: [batch_size, n_concepts, D]
-        # heatmap: [batch_size, n_concepts, h, w]
+        # heatmap: [batch_size, n_concepts, H, W]
         heatmap = []
         for i in range(len(image_feature)):
             heatmap.append(torch.matmul(image_feature[i], c_embedding[i].transpose(0, 1)))
         heatmap = torch.stack(heatmap).permute(0, 3, 1, 2)
         c_pred_unlabeled = self.pooling(heatmap).squeeze()
         c_pred_unlabeled = self.sigmoid(c_pred_unlabeled)
+
+        # H = image_feature.size(1)
+        # W = image_feature.size(2)
+        # n_concepts = c_embedding.size(1)
+        # heatmap = torch.zeros(len(image_feature), H, W, n_concepts).to(c_embedding.device)
+        # for p in range(H):
+        #     for q in range(W):
+        #         for i in range(n_concepts):
+        #             heatmap[:, p, q, i] = torch.sum(c_embedding[:, i, :] * image_feature[:, p, q, :], dim=1)
+        # heatmap = heatmap.permute(0, 3, 1, 2)
+        # c_pred_unlabeled = self.pooling(heatmap).squeeze()
+        # c_pred_unlabeled = (c_pred_unlabeled > 0.6).float()
 
         tail_results = []
         if output_interventions:

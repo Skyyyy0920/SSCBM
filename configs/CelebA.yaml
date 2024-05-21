@@ -55,9 +55,9 @@ intervention_config:
 skip_repr_evaluation: True
 top_k_accuracy: [ 3, 5, 10 ]
 save_model: True
-max_epochs: 100
+max_epochs: 200
 patience: 15
-emb_size: 32
+emb_size: 16
 extra_dims: 0
 concept_loss_weight_labeled: 1
 concept_loss_weight_unlabeled: 0.1
