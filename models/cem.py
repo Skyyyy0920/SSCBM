@@ -379,5 +379,7 @@ class ConceptEmbeddingModel(ConceptBottleneckModel):
         heatmap = torch.stack(heatmap).permute(0, 3, 1, 2)
 
         for i in range(len(x)):
-            save_dir = f"./{output_dir}/{img_name[i]}"
-            visualize_and_save_heatmaps(x_show[i], c[i], heatmap[i], save_dir, concept_set)
+            # save_dir = f"./{output_dir}/{img_name[i]}"
+            save_dir = f"/root/autodl-tmp/heatmap/{img_name[i]}"
+
+            visualize_and_save_heatmaps(x_show[i], c[i], c_sem[i], heatmap[i], save_dir, concept_set)

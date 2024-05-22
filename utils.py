@@ -222,6 +222,7 @@ def evaluate_expressions(config, parent_config=None, soft=False):
 def visualize_and_save_heatmaps(
         x,
         c_ground_truth,
+        c_pred,
         heatmap,
         output_dir='output_images',
         concept_set=None,
@@ -268,7 +269,7 @@ def visualize_and_save_heatmaps(
 
         plt.imshow(overlay)
         plt.axis('off')
-        plt.title(f'{concept_set[i]} [{c_ground_truth[i]}]')
+        plt.title(f'{concept_set[i]}    [{c_ground_truth[i]}] [{c_pred[i]:.3f}]')
         plt.tight_layout()
         plt.savefig(os.path.join(output_dir, f'{concept_set[i]}'))
         plt.close()

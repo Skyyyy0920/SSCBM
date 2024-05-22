@@ -105,7 +105,8 @@ class CelebaDataset(Dataset):
         if self.concept_transform is not None:
             attr_label = self.concept_transform(attr_label)
 
-        return img_data[0], class_label, torch.FloatTensor(attr_label), torch.tensor(l), nbr_concepts, nbr_weight
+        return img_data[0], class_label, torch.tensor(attr_label).to(torch.float32), torch.tensor(
+            l), nbr_concepts, nbr_weight
 
 
 class RawAwA(Dataset):
@@ -128,7 +129,7 @@ class RawAwA(Dataset):
         return torch.tensor(img / 255.).to(torch.float32), (torch.tensor(label), torch.tensor(cs))
 
 
-def load_data(data_dir, sample=0.2, seed=42):
+def load_data(data_dir, sample=0.05, seed=42):
     # sample = 0.002
     classes = []
     with open(os.path.join(data_dir, "classes.txt")) as f:

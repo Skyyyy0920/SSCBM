@@ -138,7 +138,7 @@ def load_evaluate_model(
 
 
 if __name__ == '__main__':
-    pl.seed_everything(189798599)
+    pl.seed_everything(20010125)
     logging.info(f"Reload the trained model to plot the heatmap!")
     args = get_args()
     logging_time = time.strftime('%H-%M', time.localtime())
@@ -149,7 +149,7 @@ if __name__ == '__main__':
     with open(f"configs/{args.dataset}.yaml", "r") as f:
         experiment_config = yaml.load(f, Loader=yaml.FullLoader)
 
-    experiment_config["model_pretrain_path"] = "./checkpoints/CUB-200-2011_01-42/test.pt"
+    experiment_config["model_pretrain_path"] = "./checkpoints/labeled-ratio-80/test.pt"
 
     dataset_config = experiment_config['dataset_config']
     if args.dataset == "CUB-200-2011":
@@ -175,7 +175,7 @@ if __name__ == '__main__':
 
     train_dl, val_dl, test_dl, imbalance, (n_concepts, n_tasks, concept_map) = data_module.generate_data(
         config=dataset_config,
-        seed=4299,
+        seed=20010125,
         labeled_ratio=args.labeled_ratio,
     )
     logging.info(f"imbalance: {imbalance}")
@@ -234,7 +234,7 @@ if __name__ == '__main__':
                 root_dir=root_dir,
             )
 
-            loader = DataLoader(dataset, batch_size=8, shuffle=True, drop_last=False, num_workers=64)
+            loader = DataLoader(dataset, batch_size=256, shuffle=True, drop_last=False, num_workers=64)
             concept_set = np.array(CONCEPT_SEMANTICS)[SELECTED_CONCEPTS]
             for b_idx, batch in enumerate(loader):
                 x, x_show, y, c, img_name = batch
