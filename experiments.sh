@@ -1,5 +1,3 @@
-
-
 # ======================= Source code, datasets and preprocessing =======================
 # Download the source code and datasets from our codalab worksheet ( https://worksheets.codalab.org/worksheets/0x362911581fcd4e048ddfd84f47203fd2 ).
 # You should have `CUB_200_2011`, `CUB_processed`, `places365`, `pretrained`, `src` all availble on the path during experiment runs.

@@ -17,9 +17,9 @@ def get_args():
     parser.add_argument(
         '--dataset',
         type=str,
-        # default='CelebA',
+        default='CelebA',
         # default='CUB-200-2011',
-        default='AwA2',
+        # default='AwA2',
         # default='MNIST',
         # default='XOR',
         # default='Dot',

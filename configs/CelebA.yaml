@@ -7,7 +7,7 @@ model_selection_metrics: [ val_acc_y ]
 
 # Dataset Configuration
 dataset_config:
-  dataset: "celeba"
+  dataset: "CelebA"
   image_size: 299
   num_classes: 1000
   batch_size: 512

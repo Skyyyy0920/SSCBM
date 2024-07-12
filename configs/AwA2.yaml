@@ -11,8 +11,7 @@ dataset_config:
   image_size: 64
   num_classes: 1000
   batch_size: 32
-#  root_dir: ./data/AwA2
-  root_dir: /root/autodl-tmp/methods/semi-supervised_CBM/data/Animals_with_Attributes2
+  root_dir: ./data/AwA2
   use_imbalance: True
   use_binary_vector_class: True
   num_concepts: 6
