@@ -9,6 +9,8 @@ from configs.basic_config import *
 
 import interventions.utils as intervention_utils
 
+os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2'
+
 if __name__ == '__main__':
     # ==================================================================================================
     # 1. Get experiment args and seed
@@ -85,7 +87,7 @@ if __name__ == '__main__':
                 single_frequency_epochs=args.single_frequency_epochs,
             )
 
-            if 'intervention_config' in run_config:
+            if 'intervention_config' in run_config and False:
                 intervention_config = run_config['intervention_config']
                 test_int_args = dict(
                     task_class_weights=task_class_weights,

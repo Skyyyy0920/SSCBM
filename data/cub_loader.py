@@ -725,8 +725,6 @@ class CUBDataset(Dataset):
                  concept_transform=None, label_transform=None):
         self.data = []
         self.is_train = any(["train" in path for path in pkl_file_paths])
-        if not self.is_train:
-            assert any([("test" in path) or ("val" in path) for path in pkl_file_paths])
         for file_path in pkl_file_paths:
             with open(file_path, 'rb') as f:
                 self.data.extend(pickle.load(f))
@@ -737,6 +735,9 @@ class CUBDataset(Dataset):
         self.root_dir = root_dir
         self.path_transform = path_transform
         self.l_choice = defaultdict(bool)
+
+        # TODO: for debug
+        self.data = self.data[:10]
 
         if training:
             random.seed(seed)

@@ -1,11 +1,11 @@
+import clip
 import torch
 from torch import nn
-import numpy as np
 import pytorch_lightning as pl
 from torchvision.models import resnet50
 from models.cbm import ConceptBottleneckModel
 import train.utils as utils
-from utils import visualize_and_save_heatmaps
+from utils import *
 
 
 class ConceptEmbeddingModel(ConceptBottleneckModel):
@@ -169,6 +169,8 @@ class ConceptEmbeddingModel(ConceptBottleneckModel):
         self.fc = nn.Linear(512, self.emb_size)
         self.pooling = nn.AdaptiveAvgPool2d(1)
 
+        self.CLIP, self.CLIP_preprocess = clip.load('ViT-B/32', 'cuda')
+
     def _after_interventions(
             self,
             prob,
@@ -299,30 +301,25 @@ class ConceptEmbeddingModel(ConceptBottleneckModel):
                 contexts[:, :, self.emb_size:] * (1 - torch.unsqueeze(probs, dim=-1))
         )
         c_pred = c_embedding.view((-1, self.emb_size * self.n_concepts))
-        y = self.c2y_model(c_pred)
-        image_feature = self.unlabeled_image_encoder(x)
+        y_pred = self.c2y_model(c_pred)
 
-        # image_feature: [batch_size, H, W, D] (D is concept embedding size)
-        # c_embedding: [batch_size, n_concepts, D]
-        # heatmap: [batch_size, n_concepts, H, W]
-        heatmap = []
-        for i in range(len(image_feature)):
-            heatmap.append(torch.matmul(image_feature[i], c_embedding[i].transpose(0, 1)))
-        heatmap = torch.stack(heatmap).permute(0, 3, 1, 2)
-        c_pred_unlabeled = self.pooling(heatmap).squeeze()
-        c_pred_unlabeled = self.sigmoid(c_pred_unlabeled)
+        text_inputs_all = []
+        for i in range(len(y)):
+            text_inputs = []
+            for c in cub_data_module.CONCEPT_SEMANTICS:
+                text_inputs.append(clip.tokenize(f"a photo of a {cub_data_module.CLASS_NAMES} ({c})"))
+            print(text_inputs)
+            text_inputs_all.append(torch.cat(text_inputs).to(x.device))
+        text_inputs_all = torch.cat(text_inputs_all).to(x.device)
+        print(text_inputs_all.shape)
 
-        # H = image_feature.size(1)
-        # W = image_feature.size(2)
-        # n_concepts = c_embedding.size(1)
-        # heatmap = torch.zeros(len(image_feature), H, W, n_concepts).to(c_embedding.device)
-        # for p in range(H):
-        #     for q in range(W):
-        #         for i in range(n_concepts):
-        #             heatmap[:, p, q, i] = torch.sum(c_embedding[:, i, :] * image_feature[:, p, q, :], dim=1)
-        # heatmap = heatmap.permute(0, 3, 1, 2)
-        # c_pred_unlabeled = self.pooling(heatmap).squeeze()
-        # c_pred_unlabeled = (c_pred_unlabeled > 0.6).float()
+        text_features = self.CLIP.encode_text(text_inputs_all)
+        image_features = self.CLIP.encode_image(x)
+
+        image_features /= image_features.norm(dim=-1, keepdim=True)
+        text_features /= text_features.norm(dim=-1, keepdim=True)
+        similarity = (100.0 * image_features @ text_features.T).softmax(dim=-1)
+        c_pred_unlabeled = self.sigmoid(similarity)
 
         tail_results = []
         if output_interventions:
@@ -338,7 +335,7 @@ class ConceptEmbeddingModel(ConceptBottleneckModel):
             tail_results.append(contexts[:, :, :self.emb_size])
             tail_results.append(contexts[:, :, self.emb_size:])
 
-        return tuple([c_sem, c_pred, c_pred_unlabeled, y] + tail_results)
+        return tuple([c_sem, c_pred, c_pred_unlabeled, y_pred] + tail_results)
 
     def plot_heatmap(
             self,
