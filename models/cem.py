@@ -5,6 +5,7 @@ from torchvision.models import resnet50
 from models.cbm import ConceptBottleneckModel
 import train.utils as utils
 from utils import *
+from prs_hook import hook_prs_logger
 
 
 class ConceptEmbeddingModel(ConceptBottleneckModel):
@@ -169,6 +170,7 @@ class ConceptEmbeddingModel(ConceptBottleneckModel):
         self.pooling = nn.AdaptiveAvgPool2d(1)
 
         self.CLIP, self.CLIP_preprocess = clip.load('ViT-B/32', self.device)
+        self.prs = hook_prs_logger(self.CLIP, self.device)
 
     def _after_interventions(
             self,
@@ -370,15 +372,38 @@ class ConceptEmbeddingModel(ConceptBottleneckModel):
                 contexts[:, :, :self.emb_size] * torch.unsqueeze(probs, dim=-1) +
                 contexts[:, :, self.emb_size:] * (1 - torch.unsqueeze(probs, dim=-1))
         )
-        image_feature = self.unlabeled_image_encoder(x)
+        # image_feature = self.unlabeled_image_encoder(x)
+        
+        prs.reinit()
+        with torch.no_grad():
+            image_features = self.CLIP.encode_image(x)  # [batch, 3, 224, 224] -> [batch, 512]
+            attentions, mlps = prs.finalize(image_features)
+        # image_features /= image_features.norm(dim=-1, keepdim=True)
 
-        heatmap = []
-        for i in range(len(image_feature)):
-            heatmap.append(torch.matmul(image_feature[i], c_embedding[i].transpose(0, 1)))
-        heatmap = torch.stack(heatmap).permute(0, 3, 1, 2)
+        all_features = []
+
+        for i in range(len(y)):
+            text_inputs = []
+            for c in cub_data_module.CONCEPT_MAP_P:
+                text_inputs.append(clip.tokenize(f"a photo of a {cub_data_module.CLASS_NAMES[y[i]]} ({c})"))
+            text_inputs = torch.cat(text_inputs).to(x.device)
+            with torch.no_grad():
+                text_features = self.CLIP.encode_text(text_inputs)
+
+            text_features /= text_features.norm(dim=-1, keepdim=True)
+            #all_text_features.append(text_features)  ## need action    
+            attention_map = attentions[i, :, 1:, :].sum(axis=(0,2)) @ text_features.T ## need action
+            all_features.append(attention_map)
+        
+        # heatmap = []
+        # for i in range(len(image_feature)):
+        #     heatmap.append(torch.matmul(image_feature[i], c_embedding[i].transpose(0, 1)))
+        # heatmap = torch.stack(heatmap).permute(0, 3, 1, 2)
 
         for i in range(len(x)):
-            # save_dir = f"./{output_dir}/{img_name[i]}"
-            save_dir = f"/root/autodl-tmp/heatmap/{img_name[i]}"
+            save_dir = f"./{output_dir}/{img_name[i]}"
+            
+            # save_dir = f"/root/autodl-tmp/heatmap/{img_name[i]}"
 
-            visualize_and_save_heatmaps(x_show[i], c[i], c_sem[i], heatmap[i], save_dir, concept_set)
+            # visualize_and_save_heatmaps(x_show[i], c[i], c_sem[i], heatmap[i], save_dir, concept_set)
+            visualize_and_save_attentionmaps(x_show[i], c[i], c_sem[i], all_features[i], save_dir, concept_set)
