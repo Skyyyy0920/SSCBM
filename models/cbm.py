@@ -1,4 +1,5 @@
 import torch
+import torch.nn as nn
 import logging
 import sklearn.metrics
 import pytorch_lightning as pl
@@ -16,6 +17,7 @@ class ConceptBottleneckModel(pl.LightningModule):
             n_tasks,
             concept_loss_weight_labeled=0.01,
             concept_loss_weight_unlabeled=0.1,
+            concept_CLIP_align_loss=1,
             task_loss_weight=1,
 
             extra_dims=0,
@@ -122,6 +124,7 @@ class ConceptBottleneckModel(pl.LightningModule):
 
         self.loss_concept_labeled = torch.nn.BCELoss(weight=weight_loss)
         self.loss_concept_unlabeled = torch.nn.BCELoss(weight=weight_loss)
+        self.c_CLIP_align = torch.nn.MSELoss()
         self.loss_task = (
             torch.nn.CrossEntropyLoss(weight=task_class_weights)
             if n_tasks > 1 else torch.nn.BCEWithLogitsLoss(
@@ -131,6 +134,7 @@ class ConceptBottleneckModel(pl.LightningModule):
         self.bool = bool
         self.concept_loss_weight_labeled = concept_loss_weight_labeled
         self.concept_loss_weight_unlabeled = concept_loss_weight_unlabeled
+        self.concept_CLIP_align_loss = concept_CLIP_align_loss
         self.task_loss_weight = task_loss_weight
         self.momentum = momentum
         self.learning_rate = learning_rate
@@ -475,6 +479,7 @@ class ConceptBottleneckModel(pl.LightningModule):
             prev_interventions=prev_interventions,
         )
         c_sem, c_pred_labeled, c_pred_unlabeled, y_pred = outputs[0], outputs[1], outputs[2], outputs[3]
+        c_embedding, text_features_all = outputs[4], outputs[5]
 
         task_loss = self.loss_task(y_pred, y)
         task_loss_scalar = task_loss.detach()
@@ -487,9 +492,12 @@ class ConceptBottleneckModel(pl.LightningModule):
         # concept_loss_unlabeled = self.loss_concept_unlabeled(c_sem[~l], c_pred_unlabeled[~l])
         concept_loss_scalar_unlabeled = concept_loss_unlabeled.detach()
 
+        concept_CLIP_align_loss = self.c_CLIP_align(c_embedding, text_features_all)
+
         loss = task_loss + \
                self.concept_loss_weight_labeled * concept_loss_labeled + \
-               self.concept_loss_weight_unlabeled * concept_loss_unlabeled
+               self.concept_loss_weight_unlabeled * concept_loss_unlabeled + \
+               self.concept_CLIP_align_loss * concept_CLIP_align_loss
 
         # compute accuracy
         (c_acc, c_auc, c_f1), (y_acc, y_auc, y_f1) = compute_accuracy(c_sem, y_pred, c, y)
