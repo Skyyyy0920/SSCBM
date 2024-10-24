@@ -1,5 +1,4 @@
 import clip
-import torch
 from torch import nn
 import pytorch_lightning as pl
 from torchvision.models import resnet50
@@ -169,7 +168,7 @@ class ConceptEmbeddingModel(ConceptBottleneckModel):
         self.fc = nn.Linear(512, self.emb_size)
         self.pooling = nn.AdaptiveAvgPool2d(1)
 
-        self.CLIP, self.CLIP_preprocess = clip.load('ViT-B/32', 'cuda')
+        self.CLIP, self.CLIP_preprocess = clip.load('ViT-B/32', self.device)
 
     def _after_interventions(
             self,
@@ -303,23 +302,26 @@ class ConceptEmbeddingModel(ConceptBottleneckModel):
         c_pred = c_embedding.view((-1, self.emb_size * self.n_concepts))
         y_pred = self.c2y_model(c_pred)
 
-        text_inputs_all = []
+        with torch.no_grad():
+            image_features = self.CLIP.encode_image(x)  # [batch, 3, 224, 224] -> [batch, 512]
+        image_features /= image_features.norm(dim=-1, keepdim=True)
+
+        c_pred_unlabeled = []
         for i in range(len(y)):
             text_inputs = []
-            for c in cub_data_module.CONCEPT_SEMANTICS:
-                text_inputs.append(clip.tokenize(f"a photo of a {cub_data_module.CLASS_NAMES} ({c})"))
-            print(text_inputs)
-            text_inputs_all.append(torch.cat(text_inputs).to(x.device))
-        text_inputs_all = torch.cat(text_inputs_all).to(x.device)
-        print(text_inputs_all.shape)
+            for c in cub_data_module.CONCEPT_MAP_P:
+                text_inputs.append(clip.tokenize(f"a photo of a {cub_data_module.CLASS_NAMES[y[i]]} ({c})"))
+            text_inputs = torch.cat(text_inputs).to(x.device)
+            with torch.no_grad():
+                text_features = self.CLIP.encode_text(text_inputs)
 
-        text_features = self.CLIP.encode_text(text_inputs_all)
-        image_features = self.CLIP.encode_image(x)
+            text_features /= text_features.norm(dim=-1, keepdim=True)
+            # similarity = (100.0 * image_features @ text_features.T).softmax(dim=-1)  # TODO
+            # c_pred_unlabeled = self.sigmoid(similarity)
+            similarity = image_features[i] @ text_features.T
+            c_pred_unlabeled.append(similarity)
 
-        image_features /= image_features.norm(dim=-1, keepdim=True)
-        text_features /= text_features.norm(dim=-1, keepdim=True)
-        similarity = (100.0 * image_features @ text_features.T).softmax(dim=-1)
-        c_pred_unlabeled = self.sigmoid(similarity)
+        c_pred_unlabeled = torch.stack(c_pred_unlabeled)
 
         tail_results = []
         if output_interventions:
