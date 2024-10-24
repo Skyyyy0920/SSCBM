@@ -231,7 +231,9 @@ def visualize_and_save_heatmaps(
     x (torch.Tensor): [channels, height, width]
     heatmap (torch.Tensor): [num_heatmaps, heatmap_height, heatmap_width]
     """
-    os.makedirs(output_dir, exist_ok=True)
+    #os.makedirs(output_dir, exist_ok=True)
+    #os.makedirs(output_dir+"hmnpy", exist_ok=True)
+    os.makedirs(output_dir+"firsthm", exist_ok=True)
 
     image = x.permute(1, 2, 0).numpy()  # 转换成 (height, width, channels)
 
@@ -240,14 +242,14 @@ def visualize_and_save_heatmaps(
     plt.axis('off')
     plt.title('Original Image')
     plt.tight_layout()
-    plt.savefig(os.path.join(output_dir, 'original_image.png'))
+    plt.savefig(os.path.join(output_dir+'firsthm', 'original_image.png'))
     plt.close()
 
     # 生成红色蒙版
-    red_mask = np.zeros_like(image)
-    red_mask[..., 0] = 1.0  # 红色通道
-    red_mask[..., 1] = 0.0  # 绿色通道
-    red_mask[..., 2] = 0.0  # 蓝色通道
+    # red_mask = np.zeros_like(image)
+    # red_mask[..., 0] = 1.0  # 红色通道
+    # red_mask[..., 1] = 0.0  # 绿色通道
+    # red_mask[..., 2] = 0.0  # 蓝色通道
 
     # 对每个热图进行处理并保存
     for i in range(heatmap.shape[0]):
@@ -257,19 +259,74 @@ def visualize_and_save_heatmaps(
         # 上采样到图像大小
         hm_upsampled = F.interpolate(hm, size=(image.shape[0], image.shape[1]), mode='bilinear', align_corners=False)
         hm_upsampled = hm_upsampled.squeeze().numpy()  # (height, width)
+        #np.save(os.path.join(output_dir+'hmnpy', f'{concept_set[i]}'), hm_upsampled)
 
-        # 根据 heatmap 的值设置透明度
-        alpha = hm_upsampled / hm_upsampled.max()  # 归一化到 0-1
-        alpha = np.clip(alpha, 0, 1)  # 保证值在 0-1 之间
+        # # 根据 heatmap 的值设置透明度
+        hm = hm_upsampled / hm_upsampled.max()  # 归一化到 0-1
+        hm = np.clip(hm, 0, 1)  # 保证值在 0-1 之间
+        # # Visualize the data
+        plt.figure(figsize=(6,6))
 
-        # 叠加蒙版到原始图像上
-        overlay = image.copy()
-        for chn in range(3):
-            overlay[..., chn] = image[..., chn] * (1 - alpha) + red_mask[..., chn] * alpha
 
-        plt.imshow(overlay)
+        plt.imshow(image, alpha=1)
+        plt.imshow(hm, cmap='coolwarm', alpha=0.6) 
+        plt.colorbar()
+
+        plt.axis('off')  # Turn off axis
+        plt.savefig(os.path.join(output_dir+'firsthm', f'{concept_set[i]}'))
+        plt.close()
+        
+
+
+        # # 叠加蒙版到原始图像上
+        # overlay = image.copy()
+        # for chn in range(3):
+        #     overlay[..., chn] = image[..., chn] * (1 - alpha) + red_mask[..., chn] * alpha
+
+        # plt.imshow(overlay)
+        # plt.axis('off')
+        # plt.title(f'{concept_set[i]}    [{c_ground_truth[i]}] [{c_pred[i]:.3f}]')
+        # plt.tight_layout()
+        # plt.savefig(os.path.join(output_dir, f'{concept_set[i]}'))
+        # plt.close()
+
+
+def visualize_and_save_attentionmaps(
+        x,
+        c_ground_truth,
+        c_pred,
+        attention_map,
+        output_dir='output_images',
+        concept_set=None,
+):
+
+    #os.makedirs(output_dir, exist_ok=True)
+    #os.makedirs(output_dir+"hmnpy", exist_ok=True)
+    os.makedirs(output_dir+"first_attn", exist_ok=True)
+
+    image = x.permute(1, 2, 0).numpy()  # 转换成 (height, width, channels)
+
+    # 保存原图
+    plt.imshow(image)
+    plt.axis('off')
+    plt.title('Original Image')
+    plt.tight_layout()
+    plt.savefig(os.path.join(output_dir+'first_attn', 'original_image.png'))
+    plt.close()
+
+    midatt = einops.rearrange(attention_map, '(B N M) C -> B C N M', N=math.sqrt(attention_map.shape[0]), 
+                                                                    M=math.sqrt(attention_map.shape[0]), B=1)
+    midatt = midatt[0].detach.cpu.numpy()
+    print(midatt.shape, "midatt shape")
+    attention_map = F.interpolate(midatt, size=(image.shape[0], image.shape[1]), mode='bilinear', align_corners=False)
+    print(attention_map.shape, "attmap2 shape") 
+
+    for i in range(attention_map.shape[0]):      
+        plt.figure(figsize=(6,6))                
+        plt.imshow(image, alpha=1)  
+        plt.imshow(attention_map[i] - np.mean(attention_map,axis=0), cmap='coolwarm', alpha=0.6)
+        plt.colorbar()
         plt.axis('off')
         plt.title(f'{concept_set[i]}    [{c_ground_truth[i]}] [{c_pred[i]:.3f}]')
-        plt.tight_layout()
-        plt.savefig(os.path.join(output_dir, f'{concept_set[i]}'))
+        plt.savefig(os.path.join(output_dir+'first_attn', f'{concept_set[i]}'))
         plt.close()
