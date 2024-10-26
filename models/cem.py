@@ -19,6 +19,7 @@ class ConceptEmbeddingModel(ConceptBottleneckModel):
             shared_prob_gen=True,
             concept_loss_weight_labeled=1,
             concept_loss_weight_unlabeled=5,
+            concept_CLIP_align_loss=1,
             task_loss_weight=1,
 
             c2y_model=None,
@@ -149,6 +150,7 @@ class ConceptEmbeddingModel(ConceptBottleneckModel):
 
         self.loss_concept_labeled = torch.nn.BCELoss(weight=weight_loss)
         self.loss_concept_unlabeled = torch.nn.BCELoss(weight=weight_loss)
+        self.loss_align = torch.nn.MSELoss()
         self.loss_task = (
             torch.nn.CrossEntropyLoss(weight=task_class_weights)
             if n_tasks > 1 else torch.nn.BCEWithLogitsLoss(
@@ -157,6 +159,7 @@ class ConceptEmbeddingModel(ConceptBottleneckModel):
         )
         self.concept_loss_weight_labeled = concept_loss_weight_labeled
         self.concept_loss_weight_unlabeled = concept_loss_weight_unlabeled
+        self.concept_CLIP_align_loss = concept_CLIP_align_loss
         self.momentum = momentum
         self.learning_rate = learning_rate
         self.weight_decay = weight_decay
@@ -167,8 +170,8 @@ class ConceptEmbeddingModel(ConceptBottleneckModel):
         self.use_concept_groups = use_concept_groups
 
         self.CLIP, self.CLIP_preprocess = clip.load('ViT-B/32', self.device)
-        self.c_align_CLIP = nn.Linear(self.emb_size, 512)
-        self.prs = hook_prs_logger(self.CLIP, self.device)
+        self.c_align_linear = nn.Linear(self.emb_size, 512)
+        # self.prs = hook_prs_logger(self.CLIP, self.device)
 
     def _after_interventions(
             self,
@@ -325,7 +328,8 @@ class ConceptEmbeddingModel(ConceptBottleneckModel):
             tail_results.append(contexts[:, :, :self.emb_size])
             tail_results.append(contexts[:, :, self.emb_size:])
 
-        return tuple([c_sem, c_pred, c_pred_unlabeled, y_pred, c_embedding, text_features_all] + tail_results)
+        return tuple([c_sem, c_pred, c_pred_unlabeled, y_pred, self.c_align_linear(c_embedding),
+                      text_features_all] + tail_results)
 
     def plot_heatmap(
             self,

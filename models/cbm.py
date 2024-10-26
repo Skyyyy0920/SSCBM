@@ -124,7 +124,7 @@ class ConceptBottleneckModel(pl.LightningModule):
 
         self.loss_concept_labeled = torch.nn.BCELoss(weight=weight_loss)
         self.loss_concept_unlabeled = torch.nn.BCELoss(weight=weight_loss)
-        self.c_CLIP_align = torch.nn.MSELoss()
+        self.loss_align = torch.nn.MSELoss()
         self.loss_task = (
             torch.nn.CrossEntropyLoss(weight=task_class_weights)
             if n_tasks > 1 else torch.nn.BCEWithLogitsLoss(
@@ -492,7 +492,7 @@ class ConceptBottleneckModel(pl.LightningModule):
         # concept_loss_unlabeled = self.loss_concept_unlabeled(c_sem[~l], c_pred_unlabeled[~l])
         concept_loss_scalar_unlabeled = concept_loss_unlabeled.detach()
 
-        concept_CLIP_align_loss = self.c_CLIP_align(c_embedding, text_features_all)
+        concept_CLIP_align_loss = self.loss_align(c_embedding, text_features_all)
 
         loss = task_loss + \
                self.concept_loss_weight_labeled * concept_loss_labeled + \
