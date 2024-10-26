@@ -321,13 +321,13 @@ def visualize_and_save_attentionmaps(
     print(os.path.join(output_dir+'first_attn', 'original_image.png'))
     plt.close()
     #print(attention_map.shape)
-    print(math.sqrt(attention_map.shape[0]))
+
     midatt = einops.rearrange(attention_map, '(B N M) C -> B C N M', N=7, M=7, B=1)
     # print(midatt[0].shape, 'midatt shape before detach')
     # midatt = midatt[0].detach().cpu().numpy()
     # print(midatt.shape, "midatt shape")
     midatt = midatt[0].unsqueeze(0)
-    #print(midatt.shape)
+
     
     attention_map = F.interpolate(midatt, size=(image.shape[0], image.shape[1]), mode='bilinear', align_corners=False)
     attention_map = attention_map[0]

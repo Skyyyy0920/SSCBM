@@ -791,8 +791,12 @@ class CUBDataset(Dataset):
                 '/juice/scr/scr102/scr/thaonguyen/CUB_supervision/datasets/',
                 '/scratch/xg02913/'
             )
-            img = Image.open(img_path).convert('RGB')
-            img_tensor = preprocess(img).unsqueeze(0)
+            # img = Image.open(img_path).convert('RGB')
+            img = Image.open(img_path)
+            img = img.resize((224,224))
+            #img_tensor = preprocess(img).unsqueeze(0)
+            img = self.CLIP_preprocess(img).unsqueeze(0)
+            img_tensor = ((img-torch.min(img))/(torch.max(img)-torch.min(img)))*2-1
             imgs.append(img_tensor)
         imgs_tensor = torch.cat(imgs, dim=0)
         imgs_tensor = imgs_tensor.to(device)
@@ -838,7 +842,8 @@ class CUBDataset(Dataset):
             '/juice/scr/scr102/scr/thaonguyen/CUB_supervision/datasets/',
             '/scratch/xg02913/'
         )
-        img = Image.open(img_path).convert('RGB')
+        #img = Image.open(img_path).convert('RGB')
+        img = Image.open(img_path)
         img = img.resize((224,224))
 
         class_label = img_data['class_label']
@@ -846,6 +851,7 @@ class CUBDataset(Dataset):
             class_label = self.label_transform(class_label)
 
         img = self.CLIP_preprocess(img)
+        img = ((img-torch.min(img))/(torch.max(img)-torch.min(img)))*2-1
 
         attr_label = img_data['attribute_label']
         if self.concept_transform is not None:

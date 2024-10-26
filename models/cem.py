@@ -167,11 +167,13 @@ class ConceptEmbeddingModel(ConceptBottleneckModel):
         self.tau = tau
         self.use_concept_groups = use_concept_groups
 
-        self.fc = nn.Linear(512, self.emb_size)
-        self.pooling = nn.AdaptiveAvgPool2d(1)
+        # self.fc = nn.Linear(512, self.emb_size)
+        # self.pooling = nn.AdaptiveAvgPool2d(1)
 
-        self.model_clip, _, preprocess_2 = factory.create_model_and_transforms('ViT-B/32')
+        self.model_clip, _, preprocess_2 = factory.create_model_and_transforms('ViT-B/32', pretrained='laion400m_e31')
         self.model_clip.to(self.device)
+
+        self.c_align_linear = nn.Linear(self.emb_size, 512)
 
         #self.CLIP, self.CLIP_preprocess = clip.load('ViT-B/32', self.device)
 
@@ -203,20 +205,6 @@ class ConceptEmbeddingModel(ConceptBottleneckModel):
         intervention_idxs = intervention_idxs.to(prob.device)
         return prob * (1 - intervention_idxs) + intervention_idxs * c_true, intervention_idxs
 
-    def unlabeled_image_encoder(self, x):
-        # self.pre_concept_model resnet34
-        x = self.pre_concept_model.conv1(x)
-        x = self.pre_concept_model.bn1(x)
-        x = self.pre_concept_model.relu(x)
-        x = self.pre_concept_model.maxpool(x)
-
-        x = self.pre_concept_model.layer1(x)
-        x = self.pre_concept_model.layer2(x)
-        x = self.pre_concept_model.layer3(x)
-        x = self.pre_concept_model.layer4(x)
-        x = x.transpose(1, 3)
-        x = self.fc(x)
-        return x
 
     def _forward(
             self,
@@ -312,6 +300,7 @@ class ConceptEmbeddingModel(ConceptBottleneckModel):
         image_features /= image_features.norm(dim=-1, keepdim=True)
 
         c_pred_unlabeled = []
+        text_features_all = []
         for i in range(len(y)):
             text_inputs = []
             for c in cub_data_module.CONCEPT_MAP_P:
@@ -321,12 +310,14 @@ class ConceptEmbeddingModel(ConceptBottleneckModel):
                 text_features = self.model_clip.encode_text(text_inputs)
 
             text_features /= text_features.norm(dim=-1, keepdim=True)
+            text_features_all.append(text_features)
             # similarity = (100.0 * image_features @ text_features.T).softmax(dim=-1)  # TODO
             # c_pred_unlabeled = self.sigmoid(similarity)
             similarity = image_features[i] @ text_features.T
             c_pred_unlabeled.append(similarity)
 
         c_pred_unlabeled = torch.stack(c_pred_unlabeled)
+        text_features_all = torch.stack(text_features_all)
 
         tail_results = []
         if output_interventions:
@@ -336,13 +327,14 @@ class ConceptEmbeddingModel(ConceptBottleneckModel):
             tail_results.append(intervention_idxs)
         if output_latent:
             print(f"output_latent")
+            
             tail_results.append(latent)
         if output_embeddings:
             print(f"output_embedding")
             tail_results.append(contexts[:, :, :self.emb_size])
             tail_results.append(contexts[:, :, self.emb_size:])
 
-        return tuple([c_sem, c_pred, c_pred_unlabeled, y_pred] + tail_results)
+        return tuple([c_sem, c_pred, c_pred_unlabeled, y_pred, c_embedding, text_features_all] + tail_results)
 
     def plot_heatmap(
             self,
@@ -380,6 +372,7 @@ class ConceptEmbeddingModel(ConceptBottleneckModel):
         # image_feature = self.unlabeled_image_encoder(x)
         print('===========================input x shape======================')
         print(x.shape)
+        print(torch.max(x), torch.min(x))
         #self.model_try, _, preprocess_2 = factory.create_model_and_transforms('ViT-B/32')
         #self.model_try.to(self.device)
         #x = preprocess_2(x)
@@ -395,6 +388,9 @@ class ConceptEmbeddingModel(ConceptBottleneckModel):
         # image_features /= image_features.norm(dim=-1, keepdim=True)
         print('========================attenions shape==========================')
         print(attentions.shape)
+        print('attention range',torch.max(attentions), torch.min(attentions))
+        print('imagefeature range', torch.max(image_features), torch.min(image_features))
+
         
 
         all_features = []
@@ -406,11 +402,13 @@ class ConceptEmbeddingModel(ConceptBottleneckModel):
             text_inputs = torch.cat(text_inputs).to(x.device)
             with torch.no_grad():
                 text_features = self.model_clip.encode_text(text_inputs)
-
+            print(torch.max(text_features), torch.min(text_features))
             text_features /= text_features.norm(dim=-1, keepdim=True)
+            print('text feature', torch.max(text_features), torch.min(text_features))
             #all_text_features.append(text_features)  ## need action    
-            attention_map = attentions[i, :, 1:, :].sum(axis=(0,2)) @ text_features.T ## need action
+            attention_map = attentions[i, :, 1:, :].sum(axis=(0, 2)) @ text_features.T ## need action
             print('attentionmap shape', attention_map.shape)
+            print(torch.max(text_features), torch.min(text_features))
             all_features.append(attention_map)
         
         # heatmap = []
