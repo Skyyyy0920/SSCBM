@@ -1,5 +1,4 @@
 import os
-import clip
 import torch
 import random
 import pickle
@@ -657,14 +656,11 @@ CONCEPT_SEMANTICS = [
     "has_wing_pattern::multi-colored",
 ]
 
-CONCEPT_MAP = np.array(CONCEPT_SEMANTICS)[SELECTED_CONCEPTS]
-CONCEPT_MAP_P = []
-for concept in CONCEPT_MAP:
-    CONCEPT_MAP_P.append(concept.replace('::', ' of ').replace('_', ' '))
-
 # Generate a mapping containing all concept groups in CUB generated using a simple prefix tree
 CONCEPT_GROUP_MAP = defaultdict(list)
-for i, concept_name in enumerate(list(CONCEPT_MAP)):
+for i, concept_name in enumerate(list(
+        np.array(CONCEPT_SEMANTICS)[SELECTED_CONCEPTS]
+)):
     group = concept_name[:concept_name.find("::")]
     CONCEPT_GROUP_MAP[group].append(i)
 
@@ -725,23 +721,22 @@ class StratifiedSampler(Sampler):
 
 class CUBDataset(Dataset):
     def __init__(self, pkl_file_paths, image_dir, labeled_ratio, training,
-                 seed=42, root_dir='../data/CUB200/', path_transform=None,
+                 seed=42, root_dir='../data/CUB200/', path_transform=None, transform=None,
                  concept_transform=None, label_transform=None):
         self.data = []
         self.is_train = any(["train" in path for path in pkl_file_paths])
+        if not self.is_train:
+            assert any([("test" in path) or ("val" in path) for path in pkl_file_paths])
         for file_path in pkl_file_paths:
             with open(file_path, 'rb') as f:
                 self.data.extend(pickle.load(f))
-        _, self.CLIP_preprocess = clip.load('ViT-B/32', 'cuda')
+        self.transform = transform
         self.concept_transform = concept_transform
         self.label_transform = label_transform
         self.image_dir = image_dir
         self.root_dir = root_dir
         self.path_transform = path_transform
         self.l_choice = defaultdict(bool)
-
-        # # TODO: for debug
-        # self.data = self.data[:10]
 
         if training:
             random.seed(seed)
@@ -816,6 +811,26 @@ class CUBDataset(Dataset):
 
         return [{'indices': idx, 'weights': w} for idx, w in zip(indices, weights)]
 
+    def nearest_neighbors_clip(self, k=4):
+        import clip
+
+        device = "cuda" if torch.cuda.is_available() else "cpu"
+        model, preprocess = clip.load("ViT-B/32", device=device)
+        model.eval()
+
+        def extract_image_features(image_path):
+            image = Image.open(image_path)
+            image_input = preprocess(image).unsqueeze(0).to(device)
+
+            with torch.no_grad():
+                image_features = model.encode_image(image_input)
+
+            return image_features
+
+        image_path = "path_to_your_image.jpg"
+        image_features = extract_image_features(image_path)
+        print(image_features.shape)
+
     def __len__(self):
         return len(self.data)
 
@@ -840,8 +855,8 @@ class CUBDataset(Dataset):
         class_label = img_data['class_label']
         if self.label_transform:
             class_label = self.label_transform(class_label)
-
-        img = self.CLIP_preprocess(img)
+        if self.transform:
+            img = self.transform(img)
 
         attr_label = img_data['attribute_label']
         if self.concept_transform is not None:
@@ -900,13 +915,35 @@ def load_data(
         training=False,
         image_dir='images',
         resampling=False,
+        resol=299,
         root_dir='./data/CUB_200_2011',
         num_workers=1,
         concept_transform=None,
         label_transform=None,
         path_transform=None,
 ):
+    """
+    Note: Inception needs (299,299,3) images with inputs scaled between -1 and 1
+    Loads data with transformations applied, and upsample the minority class if
+    there is class imbalance and weighted loss is not used
+    NOTE: resampling is customized for first attribute only, so change sampler.py if necessary
+    """
+    resized_resol = int(resol * 256 / 224)
     is_training = any(['train.pkl' in f for f in pkl_paths])
+    if is_training:
+        transform = transforms.Compose([
+            transforms.ColorJitter(brightness=32 / 255, saturation=(0.5, 1.5)),
+            transforms.RandomResizedCrop(resol),
+            transforms.RandomHorizontalFlip(),
+            transforms.ToTensor(),  # implicitly divides by 255
+            transforms.Normalize(mean=[0.5, 0.5, 0.5], std=[2, 2, 2])
+        ])
+    else:
+        transform = transforms.Compose([
+            transforms.CenterCrop(resol),
+            transforms.ToTensor(),  # implicitly divides by 255
+            transforms.Normalize(mean=[0.5, 0.5, 0.5], std=[2, 2, 2])
+        ])
 
     dataset = CUBDataset(
         labeled_ratio=labeled_ratio,
@@ -914,15 +951,18 @@ def load_data(
         training=training,
         pkl_file_paths=pkl_paths,
         image_dir=image_dir,
+        transform=transform,
         root_dir=root_dir,
         concept_transform=concept_transform,
         label_transform=label_transform,
         path_transform=path_transform,
     )
     if is_training:
-        drop_last, shuffle = True, True
+        drop_last = True
+        shuffle = True
     else:
-        drop_last, shuffle = False, False
+        drop_last = False
+        shuffle = False
     if resampling:
         sampler = StratifiedSampler(ImbalancedDatasetSampler(dataset), batch_size=batch_size)
         loader = DataLoader(dataset, batch_sampler=sampler, num_workers=num_workers)
@@ -995,7 +1035,6 @@ def generate_data(
     concept_group_map = CONCEPT_GROUP_MAP.copy()
     print(f"concept_group_map: {concept_group_map}")
     n_concepts = len(SELECTED_CONCEPTS)
-    print(f"number of concepts: {n_concepts}")
 
     if sampling_percent != 1:
         # Do the subsampling
