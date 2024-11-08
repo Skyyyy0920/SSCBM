@@ -10,10 +10,11 @@ from pathlib import Path
 import torch.nn.functional as F
 import matplotlib.pyplot as plt
 
+import data.pbc_loader as pbc_data_module
 import data.cub_loader as cub_data_module
+import data.awa2_loader as awa_data_module
 import data.mnist_loader as mnist_data_module
 import data.celeba_loader as celeba_data_module
-import data.awa2_loader as awa_data_module
 from data.synthetic_loader import get_synthetic_data, get_synthetic_num_features, get_synthetic_extractor_arch
 
 os.environ["CUDA_VISIBLE_DEVICES"] = "0"
@@ -97,6 +98,8 @@ def generate_dataset_and_update_config(experiment_config, args):
     dataset_config = experiment_config['dataset_config']
     if args.dataset == "CUB-200-2011":
         data_module = cub_data_module
+    elif args.dataset == "PBC":
+        data_module = pbc_data_module
     elif args.dataset == "CelebA":
         data_module = celeba_data_module
     elif args.dataset == "MNIST":
