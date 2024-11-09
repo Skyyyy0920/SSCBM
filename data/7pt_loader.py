@@ -1,59 +1,72 @@
 import os
-import pandas as pd
 import torch
+import numpy as np
+import pandas as pd
+from PIL import Image
+from collections import defaultdict
 from torch.utils.data import Dataset, DataLoader
 from torchvision import transforms
 from torchvision.models import resnet50
-from PIL import Image
-from collections import defaultdict
-import random
-import logging
-import numpy as np
-from sklearn.neighbors import NearestNeighbors
 from tqdm import tqdm
+from sklearn.neighbors import NearestNeighbors
 
 
-class PBCDataset(Dataset):
+class Derm7ptDataset(Dataset):
     def __init__(self, csv_path, image_dir, labeled_ratio, training,
-                 seed=42, root_dir='./data/PBC/', path_transform=None, transform=None,
+                 seed=42, root_dir='./data/derm7pt/', transform=None,
                  concept_transform=None, label_transform=None):
+        """
+        Args:
+            csv_path: Path to the CSV metadata file
+            image_dir: Directory containing the images
+            labeled_ratio: Ratio of labeled data to use
+            training: Boolean indicating if this is for training
+            seed: Random seed
+            root_dir: Root directory of the dataset
+            transform: Image transforms
+            concept_transform: Transform for concept vectors
+            label_transform: Transform for labels
+        """
         self.data = pd.read_csv(csv_path)
         self.transform = transform
         self.concept_transform = concept_transform
         self.label_transform = label_transform
         self.image_dir = image_dir
         self.root_dir = root_dir
-        self.path_transform = path_transform
         self.l_choice = defaultdict(bool)
-        self.is_train = 'train' in csv_path
+        self.is_train = training
 
+        # Define label mappings
         self.label_map = {
-            'Neutrophil': 0, 'Eosinophil': 1, 'Basophil': 2,
-            'Monocyte': 3, 'Lymphocyte': 4
+            'basal cell carcinoma': 0,
+            'nevus': 1,
+            'melanoma': 2,
+            'DF/LT/MLS/MISC': 3,
+            'seborrheic keratosis': 4
         }
-        self.concept_columns = ['cell_size', 'cell_shape', 'nucleus_shape',
-                                'nuclear_cytoplasmic_ratio', 'chromatin_density',
-                                'cytoplasm_vacuole', 'cytoplasm_texture',
-                                'cytoplasm_colour', 'granule_type',
-                                'granule_colour', 'granularity']
+
+        # Define the 7-point criteria as concepts
+        self.concept_columns = [
+            'pigment_network', 'blue_whitish_veil', 'vascular_structures',
+            'pigmentation', 'streaks', 'dots_and_globules', 'regression_structures'
+        ]
+
+        # Create concept maps for each feature
         self.concept_maps = {}
         for column in self.concept_columns:
             unique_values = sorted(self.data[column].unique())
             self.concept_maps[column] = {val: idx for idx, val in enumerate(unique_values)}
 
-        print("Concept maps:")
-        for concept, value_map in self.concept_maps.items():
-            print(f"{concept}: {value_map}")
-
         if training:
-            random.seed(seed)
+            # Split labeled/unlabeled data maintaining class distribution
+            np.random.seed(seed)
             class_count = defaultdict(int)
             for _, row in self.data.iterrows():
-                class_count[row['label']] += 1
+                class_count[row['diagnosis']] += 1
 
             labeled_count = defaultdict(int)
             for idx, row in self.data.iterrows():
-                class_label = row['label']
+                class_label = row['diagnosis']
                 if labeled_count[class_label] < labeled_ratio * class_count[class_label]:
                     self.l_choice[idx] = True
                     labeled_count[class_label] += 1
@@ -63,15 +76,11 @@ class PBCDataset(Dataset):
             for idx in range(len(self.data)):
                 self.l_choice[idx] = True
 
-        count = 0
-        for idx in range(len(self.l_choice)):
-            if self.l_choice[idx]:
-                count += 1
-        logging.info(f"actual labeled ratio: {count / len(self.l_choice)}")
-
+        # Compute nearest neighbors for semi-supervised learning
         self.neighbor = self.nearest_neighbors_resnet(k=2)
 
     def _get_concept_vector(self, row):
+        """Convert 7-point criteria into one-hot encoded concept vector."""
         concept_vector = []
         for concept in self.concept_columns:
             n_classes = len(self.concept_maps[concept])
@@ -81,6 +90,7 @@ class PBCDataset(Dataset):
         return np.array(concept_vector)
 
     def nearest_neighbors_resnet(self, k=3):
+        """Compute nearest neighbors using ResNet50 features."""
         preprocess = transforms.Compose([
             transforms.Resize(256),
             transforms.CenterCrop(224),
@@ -92,15 +102,18 @@ class PBCDataset(Dataset):
         model = resnet50(pretrained=True).to(device)
         model.eval()
 
+        # Extract features for all images
         imgs = []
         for _, row in tqdm(self.data.iterrows(), desc="Processing images"):
-            img_path = os.path.join(self.root_dir, row['path'])
+            img_path = os.path.join(self.image_dir, row['derm'])
             img = Image.open(img_path).convert('RGB')
             img_tensor = preprocess(img).unsqueeze(0)
             imgs.append(img_tensor)
 
         imgs_tensor = torch.cat(imgs, dim=0)
         imgs_tensor = imgs_tensor.to(device)
+
+        # Process in chunks to avoid memory issues
         num_chunks = 10
         chunked_tensors = torch.chunk(imgs_tensor, num_chunks, dim=0)
 
@@ -111,16 +124,19 @@ class PBCDataset(Dataset):
         features = torch.cat(features, dim=0)
         features = features.detach().cpu().numpy()
 
+        # Get features for labeled samples only
         labeled_features = []
         for idx in range(len(features)):
             if self.l_choice[idx]:
                 labeled_features.append(features[idx])
         labeled_features = np.array(labeled_features)
 
+        # Compute nearest neighbors
         nbrs = NearestNeighbors(n_neighbors=k, metric='cosine')
         nbrs.fit(labeled_features)
         distances, indices = nbrs.kneighbors(features)
 
+        # Compute weights based on distances
         weights = 1.0 / (distances + 1e-6)
         weights = weights / np.sum(weights, axis=1, keepdims=True)
 
@@ -130,6 +146,7 @@ class PBCDataset(Dataset):
         return len(self.data)
 
     def __getitem__(self, idx):
+        """Get a sample from the dataset."""
         row = self.data.iloc[idx]
         l = self.l_choice[idx]
 
@@ -143,17 +160,18 @@ class PBCDataset(Dataset):
         nbr_weight = torch.from_numpy(neighbor_info['weights'])
 
         # Load and process image
-        img_path = os.path.join(self.root_dir, row['path'])
+        img_path = os.path.join(self.image_dir, row['derm'])
         img = Image.open(img_path).convert('RGB')
 
         # Get class label
-        class_label = self.label_map[row['label']]
+        class_label = self.label_map[row['diagnosis']]
         if self.label_transform:
             class_label = self.label_transform(class_label)
+
         if self.transform:
             img = self.transform(img)
 
-        # Get concept labels
+        # Get concept labels (7-point criteria)
         attr_label = self._get_concept_vector(row)
         if self.concept_transform is not None:
             attr_label = self.concept_transform(attr_label)
@@ -170,13 +188,14 @@ def load_data(
         image_dir='images',
         resampling=False,
         resol=299,
-        root_dir='./data/PBC',
+        root_dir='./data/derm7pt',
         num_workers=1,
         concept_transform=None,
         label_transform=None,
 ):
+    """Create data loader for the Derm7pt dataset."""
     resized_resol = int(resol * 256 / 224)
-    is_training = 'train' in csv_path
+    is_training = training
 
     if is_training:
         transform = transforms.Compose([
@@ -193,7 +212,7 @@ def load_data(
             transforms.Normalize(mean=[0.5, 0.5, 0.5], std=[2, 2, 2])
         ])
 
-    dataset = PBCDataset(
+    dataset = Derm7ptDataset(
         labeled_ratio=labeled_ratio,
         seed=seed,
         training=training,
@@ -227,13 +246,15 @@ def generate_data(
         labeled_ratio=0.1,
         seed=42,
 ):
+    """Generate train, validation and test data loaders."""
     root_dir = config['root_dir']
-    train_data_path = os.path.join(root_dir, 'PBC_dataset_normal_DIB/pbc_attr_v1_train.csv')
-    val_data_path = os.path.join(root_dir, 'PBC_dataset_normal_DIB/pbc_attr_v1_val.csv')
-    test_data_path = os.path.join(root_dir, 'PBC_dataset_normal_DIB/pbc_attr_v1_test.csv')
+    train_data_path = os.path.join(root_dir, 'meta/train_meta.csv')
+    val_data_path = os.path.join(root_dir, 'meta/valid_meta.csv')
+    test_data_path = os.path.join(root_dir, 'meta/test_meta.csv')
 
-    N_CONCEPTS = 31
-    N_CLASSES = 5
+    # Number of concepts (total number of possible values across all 7 criteria)
+    N_CONCEPTS = 21  # Sum of unique values for each of the 7 criteria
+    N_CLASSES = 5  # Number of diagnosis classes
 
     train_dl = load_data(
         labeled_ratio=labeled_ratio,
@@ -241,7 +262,7 @@ def generate_data(
         csv_path=train_data_path,
         training=True,
         batch_size=config['batch_size'],
-        image_dir='images',
+        image_dir=os.path.join(root_dir, 'images'),
         resampling=False,
         root_dir=root_dir,
         num_workers=config['num_workers'],
@@ -253,7 +274,7 @@ def generate_data(
         csv_path=val_data_path,
         training=False,
         batch_size=config['batch_size'],
-        image_dir='images',
+        image_dir=os.path.join(root_dir, 'images'),
         resampling=False,
         root_dir=root_dir,
         num_workers=config['num_workers'],
@@ -265,7 +286,7 @@ def generate_data(
         csv_path=test_data_path,
         training=False,
         batch_size=config['batch_size'],
-        image_dir='images',
+        image_dir=os.path.join(root_dir, 'images'),
         resampling=False,
         root_dir=root_dir,
         num_workers=config['num_workers'],

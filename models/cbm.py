@@ -482,6 +482,8 @@ class ConceptBottleneckModel(pl.LightningModule):
         concept_loss_labeled = self.loss_concept_labeled(c_sem[l], c[l])
         concept_loss_scalar_labeled = concept_loss_labeled.detach()
 
+        c_pred_unlabeled = c_pred_unlabeled.float()
+        c_pseudo = c_pseudo.float()
         concept_loss_unlabeled = self.loss_concept_unlabeled(c_pred_unlabeled[~l], c_pseudo[~l])
         # concept_loss_unlabeled = self.loss_concept_unlabeled(c_sem[~l], c_pseudo[~l])
         # concept_loss_unlabeled = self.loss_concept_unlabeled(c_sem[~l], c_pred_unlabeled[~l])
