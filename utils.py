@@ -10,6 +10,7 @@ from pathlib import Path
 import torch.nn.functional as F
 import matplotlib.pyplot as plt
 
+import data.pt_loader as pt_data_module
 import data.pbc_loader as pbc_data_module
 import data.cub_loader as cub_data_module
 import data.awa2_loader as awa_data_module
@@ -100,6 +101,8 @@ def generate_dataset_and_update_config(experiment_config, args):
         data_module = cub_data_module
     elif args.dataset == "PBC":
         data_module = pbc_data_module
+    elif args.dataset == "7pt":
+        data_module = pt_data_module
     elif args.dataset == "CelebA":
         data_module = celeba_data_module
     elif args.dataset == "MNIST":
