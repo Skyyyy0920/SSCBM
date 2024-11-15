@@ -12,7 +12,7 @@ from sklearn.neighbors import NearestNeighbors
 from torch.utils.data import Dataset, DataLoader, random_split
 
 
-class CelebaDataset(Dataset):
+class AwA2Dataset(Dataset):
     def __init__(self, ds, labeled_ratio, training,
                  seed=42, transform=None,
                  concept_transform=None, label_transform=None):
@@ -129,8 +129,7 @@ class RawAwA(Dataset):
         return torch.tensor(img / 255.).to(torch.float32), (torch.tensor(label), torch.tensor(cs))
 
 
-def load_data(data_dir, sample=0.05, seed=42):
-    # sample = 0.002
+def load_data(data_dir, sample=1, seed=42):
     classes = []
     with open(os.path.join(data_dir, "classes.txt")) as f:
         lines = f.readlines()
@@ -177,37 +176,32 @@ def generate_data(
         labeled_ratio=0.1,
         seed=42,
 ):
-    celeba_train_data, celeba_val_data, celeba_test_data = load_data(
-        data_dir=config['root_dir'],
-        seed=seed
-    )
+    train_data, val_data, test_data = load_data(data_dir=config['root_dir'], seed=seed)
 
-    celeba_train_data = CelebaDataset(celeba_train_data, labeled_ratio=labeled_ratio,
-                                      training=True, seed=seed)
-    celeba_val_data = CelebaDataset(celeba_val_data, labeled_ratio=1., training=False, seed=seed)
-    celeba_test_data = CelebaDataset(celeba_test_data, labeled_ratio=1., training=False, seed=seed)
+    train_data = AwA2Dataset(train_data, labeled_ratio=labeled_ratio, training=True, seed=seed)
+    val_data = AwA2Dataset(val_data, labeled_ratio=1, training=False, seed=seed)
+    test_data = AwA2Dataset(test_data, labeled_ratio=1, training=False, seed=seed)
 
     train_dl = torch.utils.data.DataLoader(
-        celeba_train_data,
+        train_data,
         batch_size=config['batch_size'],
         shuffle=True,
         num_workers=config['num_workers'],
     )
     test_dl = torch.utils.data.DataLoader(
-        celeba_test_data,
+        test_data,
         batch_size=config['batch_size'],
         shuffle=False,
         num_workers=config['num_workers'],
     )
     val_dl = torch.utils.data.DataLoader(
-        celeba_val_data,
+        val_data,
         batch_size=config['batch_size'],
         shuffle=False,
         num_workers=config['num_workers'],
     )
 
-    # Finally, determine whether or not we will need to compute the imbalance
-    # factors
+    # Finally, determine whether we will need to compute the imbalance factors
     num_concepts = 85
     if config.get('weight_loss', False):
         attribute_count = np.zeros((num_concepts,))

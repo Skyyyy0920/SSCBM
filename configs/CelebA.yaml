@@ -16,7 +16,7 @@ dataset_config:
   use_binary_vector_class: True
   num_concepts: 6
   label_binary_width: 1
-  label_dataset_subsample: 12
+  label_dataset_subsample: 1
   num_hidden_concepts: 2
   selected_concepts: False
   num_workers: 8
