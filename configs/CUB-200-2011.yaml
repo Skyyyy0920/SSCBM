@@ -5,7 +5,7 @@ dataset_config:
   batch_size: 256
 
   # DATASET VARIABLES
-  root_dir: ./data/CUB_200_2011
+  root_dir: /ibex/user/xieh0a/code/sscbm-backup/datasets/CUB_200_2011
   sampling_percent: 1
   test_subsampling: 1
   weight_loss: True
@@ -18,32 +18,14 @@ intervention_config:
     - policy: "random"
       group_level: True
       use_prior: True  # This will make the random policy use the learnt IntCEM prior!!!
-    - policy: "random"
-      group_level: True
-      use_prior: False
-    - policy: "coop"
-      group_level: True
-      use_prior: False
-    - policy: "behavioural_cloning"
-      group_level: True
-      use_prior: False
-    - policy: "optimal_greedy"
-      group_level: True
-      use_prior: False
-    - policy: "global_val_error"
-      group_level: True
-      use_prior: False
-    - policy: "global_val_improvement"
-      group_level: True
-      use_prior: False
 # Representation metrics
 # Change to False if you want representation metrics to be included in the
 # evaluation (may significantly increase experiment times)
 skip_repr_evaluation: False
 run_repr_avg_pred: True
 run_cas: False
-run_nis: True
-run_ois: True
+run_nis: False
+run_ois: False
 
 max_epochs: 80
 top_k_accuracy: null

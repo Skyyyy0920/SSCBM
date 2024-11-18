@@ -484,10 +484,10 @@ def intervene_in_cbm(
             y_pred = np.argmax(y_pred, axis=-1)
         else:
             y_pred = np.squeeze((expit(y_pred) >= 0.5).astype(np.int32), axis=-1)
-        # prev_interventions = np.concatenate(
-        #     list(map(lambda x: x[4].detach().cpu().numpy(), test_batch_results)),
-        #     axis=0,
-        # )
+        prev_interventions = np.concatenate(
+            list(map(lambda x: x[4].detach().cpu().numpy(), test_batch_results)),
+            axis=0,
+        )
         # TODO
         if n_tasks > 1:
             acc = np.mean(y_pred == y_test.detach().cpu().numpy())
@@ -517,7 +517,7 @@ def intervene_in_cbm(
                 y_test,
                 c_test,
                 competencies_test,
-                # torch.IntTensor(prev_interventions), # TODO
+                torch.IntTensor(prev_interventions), # TODO
             ),
             batch_size=test_dl.batch_size,
             num_workers=test_dl.num_workers,

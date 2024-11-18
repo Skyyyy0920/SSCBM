@@ -782,7 +782,7 @@ class CUBDataset(Dataset):
             img_path = img_data['img_path']
             img_path = img_path.replace(
                 '/juice/scr/scr102/scr/thaonguyen/CUB_supervision/datasets/',
-                './data/CUB_200_2011/'
+                '/ibex/user/xieh0a/code/sscbm-backup/datasets/'
             )
             img = Image.open(img_path).convert('RGB')
             img_tensor = preprocess(img).unsqueeze(0)
@@ -915,7 +915,7 @@ class CUBDataset(Dataset):
         img_path = img_data['img_path']
         img_path = img_path.replace(
             '/juice/scr/scr102/scr/thaonguyen/CUB_supervision/datasets/',
-            './data/CUB_200_2011/'
+            '/ibex/user/xieh0a/code/sscbm-backup/datasets/'
         )
         img = Image.open(img_path).convert('RGB')
 

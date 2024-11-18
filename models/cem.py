@@ -312,18 +312,6 @@ class ConceptEmbeddingModel(ConceptBottleneckModel):
         c_pred_unlabeled = self.pooling(heatmap).squeeze()
         c_pred_unlabeled = self.sigmoid(c_pred_unlabeled)
 
-        # H = image_feature.size(1)
-        # W = image_feature.size(2)
-        # n_concepts = c_embedding.size(1)
-        # heatmap = torch.zeros(len(image_feature), H, W, n_concepts).to(c_embedding.device)
-        # for p in range(H):
-        #     for q in range(W):
-        #         for i in range(n_concepts):
-        #             heatmap[:, p, q, i] = torch.sum(c_embedding[:, i, :] * image_feature[:, p, q, :], dim=1)
-        # heatmap = heatmap.permute(0, 3, 1, 2)
-        # c_pred_unlabeled = self.pooling(heatmap).squeeze()
-        # c_pred_unlabeled = (c_pred_unlabeled > 0.6).float()
-
         tail_results = []
         if output_interventions:
             print(f"output_intervention")
@@ -340,6 +328,26 @@ class ConceptEmbeddingModel(ConceptBottleneckModel):
 
         return tuple([c_sem, c_pred, c_pred_unlabeled, y] + tail_results)
 
+    def predict_step(
+            self,
+            batch,
+            batch_idx,
+            intervention_idxs=None,
+            dataloader_idx=0,
+    ):
+        x, y, c, l, nbr_c, nbr_w, competencies, prev_interventions = self._unpack_batch(batch)
+        return self._forward(
+            x,
+            intervention_idxs=intervention_idxs,
+            c=c,
+            y=y,
+            l=l,
+            train=False,
+            competencies=competencies,
+            prev_interventions=prev_interventions,
+            output_interventions=True
+        )
+        
     def plot_heatmap(
             self,
             x,
