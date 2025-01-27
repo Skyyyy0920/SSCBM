@@ -62,7 +62,6 @@ if __name__ == '__main__':
             evaluate_expressions(run_config, soft=True)
 
             old_results = None
-
             model, model_results = train_end_to_end_model(
                 run_name=run_name,
                 task_class_weights=task_class_weights,
@@ -84,6 +83,7 @@ if __name__ == '__main__':
                 activation_freq=args.activation_freq,
                 single_frequency_epochs=args.single_frequency_epochs,
             )
+            continue
             if 'intervention_config' in run_config:
                 intervention_config = run_config['intervention_config']
                 test_int_args = dict(

@@ -55,7 +55,7 @@ intervention_config:
 skip_repr_evaluation: True
 top_k_accuracy: [ 3, 5, 10 ]
 save_model: True
-max_epochs: 200
+max_epochs: 50
 patience: 15
 emb_size: 16
 extra_dims: 0
@@ -75,8 +75,23 @@ sigmoidal_prob: False
 training_intervention_prob: 0.25
 
 runs:
+  - architecture: 'SemiSupervisedConceptEmbeddingModel'
+    run_name: "SSCBM"
+    sigmoidal_prob: True
+    training_intervention_prob: 0.25
+    embedding_activation: "leakyrelu"
+
   - architecture: 'ConceptEmbeddingModel'
     run_name: "CEM"
+    sigmoidal_prob: True
+    training_intervention_prob: 0.25
+    embedding_activation: "leakyrelu"
+
+  - architecture: 'ConceptBottleneckModel'
+    run_name: "CBM"
+    bool: False
+    extra_dims: 0
+    sigmoidal_extra_capacity: False
     sigmoidal_prob: True
     training_intervention_prob: 0.25
     embedding_activation: "leakyrelu"

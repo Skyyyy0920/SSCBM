@@ -1,14 +1,12 @@
 import torch
-from torch import nn
 import numpy as np
 import pytorch_lightning as pl
 from torchvision.models import resnet50
-from models.cbm import ConceptBottleneckModel
+from models.cbm import CBM_SSL
 import train.utils as utils
-from utils import visualize_and_save_heatmaps
 
 
-class ConceptEmbeddingModel(ConceptBottleneckModel):
+class CEM_SSL(CBM_SSL):
     def __init__(
             self,
             n_concepts,
@@ -17,6 +15,7 @@ class ConceptEmbeddingModel(ConceptBottleneckModel):
             training_intervention_prob=0.25,
             embedding_activation="leakyrelu",
             shared_prob_gen=True,
+            concept_loss_weight=1,
             concept_loss_weight_labeled=1,
             concept_loss_weight_unlabeled=5,
             task_loss_weight=1,
@@ -53,15 +52,11 @@ class ConceptEmbeddingModel(ConceptBottleneckModel):
             self.ones = torch.ones(n_concepts)
 
         if active_intervention_values is not None:
-            self.active_intervention_values = torch.tensor(
-                active_intervention_values
-            )
+            self.active_intervention_values = torch.tensor(active_intervention_values)
         else:
             self.active_intervention_values = torch.ones(n_concepts)
         if inactive_intervention_values is not None:
-            self.inactive_intervention_values = torch.tensor(
-                inactive_intervention_values
-            )
+            self.inactive_intervention_values = torch.tensor(inactive_intervention_values)
         else:
             self.inactive_intervention_values = torch.ones(n_concepts)
         self.task_loss_weight = task_loss_weight
@@ -74,11 +69,7 @@ class ConceptEmbeddingModel(ConceptBottleneckModel):
                 self.concept_context_generators.append(
                     torch.nn.Sequential(*[
                         torch.nn.Linear(
-                            list(
-                                self.pre_concept_model.modules()
-                            )[-1].out_features,
-                            # Two as each concept will have a positive and a
-                            # negative embedding portion which are later mixed
+                            list(self.pre_concept_model.modules())[-1].out_features,
                             2 * emb_size,
                         ),
                     ])
@@ -87,11 +78,7 @@ class ConceptEmbeddingModel(ConceptBottleneckModel):
                 self.concept_context_generators.append(
                     torch.nn.Sequential(*[
                         torch.nn.Linear(
-                            list(
-                                self.pre_concept_model.modules()
-                            )[-1].out_features,
-                            # Two as each concept will have a positive and a
-                            # negative embedding portion which are later mixed
+                            list(self.pre_concept_model.modules())[-1].out_features,
                             2 * emb_size,
                         ),
                         torch.nn.Sigmoid(),
@@ -101,11 +88,7 @@ class ConceptEmbeddingModel(ConceptBottleneckModel):
                 self.concept_context_generators.append(
                     torch.nn.Sequential(*[
                         torch.nn.Linear(
-                            list(
-                                self.pre_concept_model.modules()
-                            )[-1].out_features,
-                            # Two as each concept will have a positive and a
-                            # negative embedding portion which are later mixed
+                            list(self.pre_concept_model.modules())[-1].out_features,
                             2 * emb_size,
                         ),
                         torch.nn.LeakyReLU(),
@@ -115,25 +98,25 @@ class ConceptEmbeddingModel(ConceptBottleneckModel):
                 self.concept_context_generators.append(
                     torch.nn.Sequential(*[
                         torch.nn.Linear(
-                            list(
-                                self.pre_concept_model.modules()
-                            )[-1].out_features,
-                            # Two as each concept will have a positive and a
-                            # negative embedding portion which are later mixed
+                            list(self.pre_concept_model.modules())[-1].out_features,
                             2 * emb_size,
                         ),
                         torch.nn.ReLU(),
                     ])
                 )
-            if self.shared_prob_gen and len(self.concept_prob_generators) == 0:
-                # Then we will use one and only one probability generator which
-                # will be shared among all concepts. This will force concept
-                # embedding vectors to be pushed into the same latent space
-                self.concept_prob_generators.append(torch.nn.Linear(2 * emb_size, 1))
+            if self.shared_prob_gen and (
+                    len(self.concept_prob_generators) == 0
+            ):
+                self.concept_prob_generators.append(torch.nn.Linear(
+                    2 * emb_size,
+                    1,
+                ))
             elif not self.shared_prob_gen:
-                self.concept_prob_generators.append(torch.nn.Linear(2 * emb_size, 1))
+                self.concept_prob_generators.append(torch.nn.Linear(
+                    2 * emb_size,
+                    1,
+                ))
         if c2y_model is None:
-            # Else we construct it here directly
             units = [
                         n_concepts * emb_size
                     ] + (c2y_layers or []) + [n_tasks]
@@ -145,18 +128,16 @@ class ConceptEmbeddingModel(ConceptBottleneckModel):
             self.c2y_model = torch.nn.Sequential(*layers)
         else:
             self.c2y_model = c2y_model
-        self.sigmoid = torch.nn.Sigmoid()
+        self.sig = torch.nn.Sigmoid()
 
-        self.loss_concept_labeled = torch.nn.BCELoss(weight=weight_loss)
-        self.loss_concept_unlabeled = torch.nn.BCELoss(weight=weight_loss)
+        self.loss_concept = torch.nn.BCELoss(weight=weight_loss)
         self.loss_task = (
             torch.nn.CrossEntropyLoss(weight=task_class_weights)
             if n_tasks > 1 else torch.nn.BCEWithLogitsLoss(
                 weight=task_class_weights
             )
         )
-        self.concept_loss_weight_labeled = concept_loss_weight_labeled
-        self.concept_loss_weight_unlabeled = concept_loss_weight_unlabeled
+        self.concept_loss_weight = concept_loss_weight
         self.momentum = momentum
         self.learning_rate = learning_rate
         self.weight_decay = weight_decay
@@ -165,9 +146,6 @@ class ConceptEmbeddingModel(ConceptBottleneckModel):
         self.emb_size = emb_size
         self.tau = tau
         self.use_concept_groups = use_concept_groups
-
-        self.fc = nn.Linear(512, self.emb_size)
-        self.pooling = nn.AdaptiveAvgPool2d(1)
 
     def _after_interventions(
             self,
@@ -183,7 +161,6 @@ class ConceptEmbeddingModel(ConceptBottleneckModel):
                 (c_true is not None) and
                 (intervention_idxs is None)
         ):
-            # Then we will probabilistically intervene in some concepts
             mask = torch.bernoulli(
                 self.ones * self.training_intervention_prob,
             )
@@ -196,21 +173,6 @@ class ConceptEmbeddingModel(ConceptBottleneckModel):
         intervention_idxs = intervention_idxs.type(torch.FloatTensor)
         intervention_idxs = intervention_idxs.to(prob.device)
         return prob * (1 - intervention_idxs) + intervention_idxs * c_true, intervention_idxs
-
-    def unlabeled_image_encoder(self, x):
-        # self.pre_concept_model resnet34
-        x = self.pre_concept_model.conv1(x)
-        x = self.pre_concept_model.bn1(x)
-        x = self.pre_concept_model.relu(x)
-        x = self.pre_concept_model.maxpool(x)
-
-        x = self.pre_concept_model.layer1(x)
-        x = self.pre_concept_model.layer2(x)
-        x = self.pre_concept_model.layer3(x)
-        x = self.pre_concept_model.layer4(x)
-        x = x.transpose(1, 3)
-        x = self.fc(x)
-        return x
 
     def _forward(
             self,
@@ -227,44 +189,37 @@ class ConceptEmbeddingModel(ConceptBottleneckModel):
             output_latent=None,
             output_interventions=None
     ):
+        output_interventions = (
+            output_interventions if output_interventions is not None
+            else self.output_interventions
+        )
+        output_latent = (
+            output_latent if output_latent is not None
+            else self.output_latent
+        )
         if latent is None:
-            pre_c = self.pre_concept_model(x)  # [batch_size, 299, 299] -> [batch_size, resnet_out_features]
+            pre_c = self.pre_concept_model(x)
             contexts = []
             c_sem = []
 
-            # First predict all the concept probabilities
             for i, context_gen in enumerate(self.concept_context_generators):
                 if self.shared_prob_gen:
                     prob_gen = self.concept_prob_generators[0]
                 else:
                     prob_gen = self.concept_prob_generators[i]
-                context = context_gen(pre_c)  # [batch_size, resnet_out_features] -> [batch_size, 2 * emb_size]
-                prob = prob_gen(context)  # [batch_size, 2 * emb_size] -> [batch_size, 1]
+                context = context_gen(pre_c)
+                prob = prob_gen(context)
                 contexts.append(torch.unsqueeze(context, dim=1))
-                c_sem.append(self.sigmoid(prob))
-            c_sem = torch.cat(c_sem, axis=-1)  # [batch_size, 1, n_concepts] -> [batch_size, n_concepts]
+                c_sem.append(self.sig(prob))
+            c_sem = torch.cat(c_sem, axis=-1)
             contexts = torch.cat(contexts, axis=1)
             latent = contexts, c_sem
         else:
             contexts, c_sem = latent
 
-        # Now include any interventions that we may want to perform!
         if (intervention_idxs is None) and (c is not None) and (
                 self.intervention_policy is not None
         ):
-            horizon = self.intervention_policy.num_groups_intervened
-            if hasattr(self.intervention_policy, "horizon"):
-                horizon = self.intervention_policy.horizon
-            prior_distribution = self._prior_int_distribution(
-                prob=c_sem,
-                pos_embeddings=contexts[:, :, :self.emb_size],
-                neg_embeddings=contexts[:, :, self.emb_size:],
-                competencies=competencies,
-                prev_interventions=prev_interventions,
-                c=c,
-                train=train,
-                horizon=horizon,
-            )
             intervention_idxs, c_int = self.intervention_policy(
                 x=x,
                 c=c,
@@ -272,7 +227,7 @@ class ConceptEmbeddingModel(ConceptBottleneckModel):
                 y=y,
                 competencies=competencies,
                 prev_interventions=prev_interventions,
-                prior_distribution=prior_distribution,
+                prior_distribution=None,
             )
 
         else:
@@ -283,7 +238,6 @@ class ConceptEmbeddingModel(ConceptBottleneckModel):
                 batch_size=x.shape[0],
             )
 
-        # Then, time to do the mixing between the positive and the negative embeddings
         probs, intervention_idxs = self._after_interventions(
             c_sem,
             pos_embeddings=contexts[:, :, :self.emb_size],
@@ -293,101 +247,20 @@ class ConceptEmbeddingModel(ConceptBottleneckModel):
             train=train,
             competencies=competencies,
         )
-        # Then time to mix!
-        c_embedding = (
+        c_pred = (
                 contexts[:, :, :self.emb_size] * torch.unsqueeze(probs, dim=-1) +
                 contexts[:, :, self.emb_size:] * (1 - torch.unsqueeze(probs, dim=-1))
         )
-        c_pred = c_embedding.view((-1, self.emb_size * self.n_concepts))
+        c_pred = c_pred.view((-1, self.emb_size * self.n_concepts))
         y = self.c2y_model(c_pred)
-        image_feature = self.unlabeled_image_encoder(x)
-
-        # image_feature: [batch_size, H, W, D] (D is concept embedding size)
-        # c_embedding: [batch_size, n_concepts, D]
-        # heatmap: [batch_size, n_concepts, H, W]
-        heatmap = []
-        for i in range(len(image_feature)):
-            heatmap.append(torch.matmul(image_feature[i], c_embedding[i].transpose(0, 1)))
-        heatmap = torch.stack(heatmap).permute(0, 3, 1, 2)
-        c_pred_unlabeled = self.pooling(heatmap).squeeze()
-        c_pred_unlabeled = self.sigmoid(c_pred_unlabeled)
-
         tail_results = []
         if output_interventions:
-            print(f"output_intervention")
-            if intervention_idxs is not None and isinstance(intervention_idxs, np.ndarray):
+            if (intervention_idxs is not None) and isinstance(intervention_idxs, np.ndarray):
                 intervention_idxs = torch.FloatTensor(intervention_idxs).to(x.device)
             tail_results.append(intervention_idxs)
         if output_latent:
-            print(f"output_latent")
             tail_results.append(latent)
         if output_embeddings:
-            print(f"output_embedding")
             tail_results.append(contexts[:, :, :self.emb_size])
             tail_results.append(contexts[:, :, self.emb_size:])
-
-        return tuple([c_sem, c_pred, c_pred_unlabeled, y] + tail_results)
-
-    def predict_step(
-            self,
-            batch,
-            batch_idx,
-            intervention_idxs=None,
-            dataloader_idx=0,
-    ):
-        x, y, c, l, nbr_c, nbr_w, competencies, prev_interventions = self._unpack_batch(batch)
-        return self._forward(
-            x,
-            intervention_idxs=intervention_idxs,
-            c=c,
-            y=y,
-            l=l,
-            train=False,
-            competencies=competencies,
-            prev_interventions=prev_interventions,
-            output_interventions=True
-        )
-        
-    def plot_heatmap(
-            self,
-            x,
-            x_show=None,
-            c=None,
-            y=None,
-            img_name=None,
-            output_dir='heatmap',
-            concept_set=None,
-    ):
-        pre_c = self.pre_concept_model(x)
-        contexts = []
-        c_sem = []
-
-        for i, context_gen in enumerate(self.concept_context_generators):
-            if self.shared_prob_gen:
-                prob_gen = self.concept_prob_generators[0]
-            else:
-                prob_gen = self.concept_prob_generators[i]
-            context = context_gen(pre_c)
-            prob = prob_gen(context)
-            contexts.append(torch.unsqueeze(context, dim=1))
-            c_sem.append(self.sigmoid(prob))
-        c_sem = torch.cat(c_sem, axis=-1)
-        contexts = torch.cat(contexts, axis=1)
-
-        probs = c_sem
-        c_embedding = (
-                contexts[:, :, :self.emb_size] * torch.unsqueeze(probs, dim=-1) +
-                contexts[:, :, self.emb_size:] * (1 - torch.unsqueeze(probs, dim=-1))
-        )
-        image_feature = self.unlabeled_image_encoder(x)
-
-        heatmap = []
-        for i in range(len(image_feature)):
-            heatmap.append(torch.matmul(image_feature[i], c_embedding[i].transpose(0, 1)))
-        heatmap = torch.stack(heatmap).permute(0, 3, 1, 2)
-
-        for i in range(len(x)):
-            # save_dir = f"./{output_dir}/{img_name[i]}"
-            save_dir = f"/root/autodl-tmp/heatmap/{img_name[i]}"
-
-            visualize_and_save_heatmaps(x_show[i], c[i], c_sem[i], heatmap[i], save_dir, concept_set)
+        return tuple([c_sem, c_pred, y] + tail_results)

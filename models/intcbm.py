@@ -3,8 +3,8 @@ import numpy as np
 import sklearn.metrics
 from torchvision.models import resnet50
 
-from models.cbm import ConceptBottleneckModel, compute_accuracy
-from models.cem import ConceptEmbeddingModel
+from cem.models.cbm import ConceptBottleneckModel, compute_accuracy
+from cem.models.cem import ConceptEmbeddingModel
 import train.utils as utils
 
 

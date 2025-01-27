@@ -123,13 +123,9 @@ def evaluate_representation_metrics(
     y_test = np.concatenate(y_test, axis=0)
     c_test = np.concatenate(c_test, axis=0)
 
-    # Now include the competence that we will assume
-    # for all concepts
     if test_subsampling not in [None, 0, 1]:
         np.random.seed(42)
-        indices = np.random.permutation(x_test.shape[0])[
-                  :int(np.ceil(x_test.shape[0] * test_subsampling))
-                  ]
+        indices = np.random.permutation(x_test.shape[0])[:int(np.ceil(x_test.shape[0] * test_subsampling))]
         x_test = x_test[indices]
         c_test = c_test[indices]
         y_test = y_test[indices]
@@ -168,8 +164,6 @@ def evaluate_representation_metrics(
         axis=0,
     )
     if config.get('extra_dims', 0) != 0:
-        # Then we will only use the extra dims as the embedding as those
-        # correspond to the learnt embeddings only
         c_pred = c_pred[:, -config.get('extra_dims', 0):]
 
     c_pred = np.reshape(c_pred, (c_test.shape[0], n_concepts, -1))
@@ -225,8 +219,7 @@ def evaluate_representation_metrics(
             )
         result_dict[ois_key] = ois
 
-    # Then let's try and see how predictive each representation is of the
-    # downstream task
+    # Then let's try and see how predictive each representation is of the downstream task
     if train_dl is not None and (
             config.get("run_repr_avg_pred", False)
     ):
@@ -290,13 +283,9 @@ def evaluate_representation_metrics(
             filename=f'{repr_task_pred_key}_{run_name}_split_{split}.joblib',
             rerun=rerun,
         )
-        logging.info(
-            f"\tDone....average repr_task_pred is {repr_task_pred * 100:.2f}%"
-        )
+        logging.info(f"\tDone....average repr_task_pred is {repr_task_pred * 100:.2f}%")
 
-        result_dict.update({
-            repr_task_pred_key: repr_task_pred,
-        })
+        result_dict.update({repr_task_pred_key: repr_task_pred})
 
     if config.get("run_nis", True):
         # Niche impurity score now

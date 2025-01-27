@@ -6,9 +6,10 @@ import torch
 
 from torchvision.models import resnet18, resnet34, resnet50, densenet121
 
-import models.cem as models_cem
-import models.cbm as models_cbm
-import models.intcbm as models_intcbm
+import models.cbm as cbm
+import models.cem as cem
+import models.sscbm as sscbm
+import models.intcbm as intcbm
 import train.utils as utils
 
 
@@ -36,117 +37,29 @@ def construct_model(
         output_interventions=False,
 ):
     task_loss_weight = config.get('task_loss_weight', 1.0)
-    if config["architecture"] in ["ConceptEmbeddingModel", "MixtureEmbModel"]:
-        model_cls = models_cem.ConceptEmbeddingModel
+    concept_loss_weight = config.get('concept_loss_weight', 1.0)
+    if config["architecture"] in ["SemiSupervisedConceptEmbeddingModel", "ConceptEmbeddingModel"]:
+        if config["architecture"] == "SemiSupervisedConceptEmbeddingModel":
+            model_cls = sscbm.SSCBM
+        else:
+            model_cls = cem.CEM_SSL
         extra_params = {
             "emb_size": config["emb_size"],
             "shared_prob_gen": config.get("shared_prob_gen", True),
             "intervention_policy": intervention_policy,
-            "training_intervention_prob": config.get(
-                'training_intervention_prob',
-                0.25,
-            ),
-            "embedding_activation": config.get(
-                "embedding_activation",
-                "leakyrelu"
-            ),
+            "training_intervention_prob": config.get('training_intervention_prob', 0.25),
+            "embedding_activation": config.get("embedding_activation", "leakyrelu"),
             "c2y_model": c2y_model,
             "c2y_layers": config.get("c2y_layers", []),
         }
         if "embeding_activation" in config:
-            # Legacy support for typo in argument
             extra_params["embedding_activation"] = config["embeding_activation"]
-    elif config["architecture"] in ["IntAwareConceptBottleneckModel", "IntCBM"]:
-        task_loss_weight = config.get('task_loss_weight', 0.0)
-        model_cls = models_intcbm.IntAwareConceptBottleneckModel
+    elif config["architecture"] in "ConceptBottleneckModel":
+        model_cls = cbm.CBM_SSL
         extra_params = {
             "bool": config["bool"],
             "extra_dims": config["extra_dims"],
-            "sigmoidal_extra_capacity": config.get(
-                "sigmoidal_extra_capacity",
-                True,
-            ),
-            "sigmoidal_prob": config.get("sigmoidal_prob", True),
-            "intervention_policy": intervention_policy,
-            "bottleneck_nonlinear": config.get("bottleneck_nonlinear", None),
-            "active_intervention_values": active_intervention_values,
-            "inactive_intervention_values": inactive_intervention_values,
-            "x2c_model": x2c_model,
-            "c2y_model": c2y_model,
-            "c2y_layers": config.get("c2y_layers", []),
-
-            "intervention_weight": config.get("intervention_weight", 5),
-            "horizon_rate": config.get("horizon_rate", 1.005),
-            "concept_map": config.get("concept_map", None),
-            "max_horizon": config.get("max_horizon", 6),
-            "include_only_last_trajectory_loss": config.get(
-                "include_only_last_trajectory_loss",
-                True,
-            ),
-            "intervention_task_loss_weight": config.get(
-                "intervention_task_loss_weight",
-                1,
-            ),
-            "initial_horizon": config.get("initial_horizon", 2),
-            "use_concept_groups": config.get("use_concept_groups", True),
-            "intervention_task_discount": config.get(
-                "intervention_task_discount",
-                config.get("intervention_task_discount", 1.1),
-            ),
-            "rollout_init_steps": config.get('rollout_init_steps', 0),
-            "int_model_layers": config.get("int_model_layers", None),
-            "int_model_use_bn": config.get("int_model_use_bn", True),
-            "num_rollouts": config.get("num_rollouts", 1),
-        }
-    elif config["architecture"] in ["IntAwareConceptEmbeddingModel", "IntCEM"]:
-        task_loss_weight = config.get('task_loss_weight', 0.0)
-        model_cls = models_intcbm.IntAwareConceptEmbeddingModel
-        extra_params = {
-            "emb_size": config["emb_size"],
-            "intervention_policy": intervention_policy,
-            "training_intervention_prob": config.get(
-                'training_intervention_prob',
-                0.25,
-            ),
-            "embedding_activation": config.get(
-                "embedding_activation",
-                "leakyrelu",
-            ),
-            "c2y_model": c2y_model,
-            "c2y_layers": config.get("c2y_layers", []),
-
-            "intervention_weight": config.get("intervention_weight", 5),
-            "horizon_rate": config.get("horizon_rate", 1.005),
-            "concept_map": config.get("concept_map", None),
-            "max_horizon": config.get("max_horizon", 6),
-            "include_only_last_trajectory_loss": config.get(
-                "include_only_last_trajectory_loss",
-                True,
-            ),
-            "intervention_task_loss_weight": config.get(
-                "intervention_task_loss_weight",
-                1,
-            ),
-            "initial_horizon": config.get("initial_horizon", 2),
-            "use_concept_groups": config.get("use_concept_groups", False),
-            "intervention_task_discount": config.get(
-                "intervention_task_discount",
-                config.get("intervention_task_discount", 1.1),
-            ),
-            "rollout_init_steps": config.get('rollout_init_steps', 0),
-            "int_model_layers": config.get("int_model_layers", None),
-            "int_model_use_bn": config.get("int_model_use_bn", False),
-            "num_rollouts": config.get("num_rollouts", 1),
-        }
-    elif "ConceptBottleneckModel" in config["architecture"]:
-        model_cls = models_cbm.ConceptBottleneckModel
-        extra_params = {
-            "bool": config["bool"],
-            "extra_dims": config["extra_dims"],
-            "sigmoidal_extra_capacity": config.get(
-                "sigmoidal_extra_capacity",
-                True,
-            ),
+            "sigmoidal_extra_capacity": config.get("sigmoidal_extra_capacity", True),
             "sigmoidal_prob": config.get("sigmoidal_prob", True),
             "intervention_policy": intervention_policy,
             "bottleneck_nonlinear": config.get("bottleneck_nonlinear", None),
@@ -173,7 +86,6 @@ def construct_model(
     else:
         c_extractor_arch = config["c_extractor_arch"]
 
-    # Create model
     return model_cls(
         n_concepts=n_concepts,
         n_tasks=n_tasks,
@@ -190,6 +102,7 @@ def construct_model(
         concept_loss_weight_labeled=config['concept_loss_weight_labeled'],
         concept_loss_weight_unlabeled=config['concept_loss_weight_unlabeled'],
         task_loss_weight=task_loss_weight,
+        concept_loss_weight=concept_loss_weight,
         learning_rate=config['learning_rate'],
         weight_decay=config['weight_decay'],
         c_extractor_arch=utils.wrap_pretrained_model(c_extractor_arch),
@@ -280,11 +193,6 @@ def construct_sequential_models(
     return x2c_model, c2y_model
 
 
-################################################################################
-# MODEL LOADING
-################################################################################
-
-
 def load_trained_model(
         config,
         n_tasks,
@@ -303,18 +211,6 @@ def load_trained_model(
         output_interventions=False,
         enable_checkpointing=False,
 ):
-    if "run_name" in config:
-        run_name = config["run_name"]
-    else:
-        run_name = (
-            f"{config['architecture']}{config.get('extra_name', '')}"
-        )
-    if split is not None:
-        full_run_name = (
-            f"{run_name}_fold_{split + 1}"
-        )
-    else:
-        full_run_name = run_name
     independent = False
     sequential = False
     if config['architecture'].startswith("Sequential"):
@@ -329,8 +225,6 @@ def load_trained_model(
             (config['architecture'] == "ConceptBottleneckModel") and
             (not config.get('sigmoidal_prob', True))
     ):
-        # Then let's look at the empirical distribution of the logits in order
-        # to be able to intervene
         model = construct_model(
             n_concepts=n_concepts,
             n_tasks=n_tasks,
@@ -370,6 +264,7 @@ def load_trained_model(
         )
     else:
         active_intervention_values = inactive_intervention_values = None
+
     if independent or sequential:
         _, c2y_model = construct_sequential_models(
             n_concepts,
@@ -380,8 +275,7 @@ def load_trained_model(
         )
 
         # As well as the wrapper CBM model we will use for serialization and testing
-        # We will be a bit cheeky and use the model with the task loss
-        # weight set to 0 for training with the same dataset
+        # We use the model with the task loss weight set to 0 for training with the same dataset
         model_config = copy.deepcopy(config)
         model_config['concept_loss_weight'] = 1
         model_config['task_loss_weight'] = 0
@@ -411,7 +305,6 @@ def load_trained_model(
             x2c_model=base_model.x2c_model,
             c2y_model=c2y_model,
         )
-
     else:
         print(f"Loading CEM from {model_saved_path}")
         model = construct_model(
