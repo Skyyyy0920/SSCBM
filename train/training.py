@@ -107,7 +107,7 @@ def train_end_to_end_model(
 ):
     seed_everything(seed)
 
-    full_run_name = "test"
+    full_run_name = run_name
 
     logging.info(f"Training ***{run_name}***")
     for key, val in config.items():

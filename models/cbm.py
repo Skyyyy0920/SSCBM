@@ -97,8 +97,7 @@ class CBM_SSL(pl.LightningModule):
                 f"Unsupported nonlinearity '{bottleneck_nonlinear}'"
             )
 
-        self.loss_concept_labeled = torch.nn.BCELoss(weight=weight_loss)
-        self.loss_concept_unlabeled = torch.nn.BCELoss(weight=weight_loss)
+        self.loss_concept = torch.nn.BCELoss(weight=weight_loss)
         self.loss_task = (
             torch.nn.CrossEntropyLoss(weight=task_class_weights)
             if n_tasks > 1 else torch.nn.BCEWithLogitsLoss(

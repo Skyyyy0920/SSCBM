@@ -27,7 +27,7 @@ run_cas: False
 run_nis: False
 run_ois: False
 
-max_epochs: 1
+max_epochs: 50
 top_k_accuracy: null
 save_model: True
 patience: 15
