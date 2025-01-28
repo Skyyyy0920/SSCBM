@@ -211,15 +211,13 @@ class CEM_SSL(CBM_SSL):
                 prob = prob_gen(context)
                 contexts.append(torch.unsqueeze(context, dim=1))
                 c_sem.append(self.sig(prob))
-            c_sem = torch.cat(c_sem, axis=-1)
-            contexts = torch.cat(contexts, axis=1)
+            c_sem = torch.cat(c_sem, dim=-1)
+            contexts = torch.cat(contexts, dim=1)
             latent = contexts, c_sem
         else:
             contexts, c_sem = latent
 
-        if (intervention_idxs is None) and (c is not None) and (
-                self.intervention_policy is not None
-        ):
+        if (intervention_idxs is None) and (c is not None) and (self.intervention_policy is not None):
             intervention_idxs, c_int = self.intervention_policy(
                 x=x,
                 c=c,
