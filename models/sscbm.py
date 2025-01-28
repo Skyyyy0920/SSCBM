@@ -171,7 +171,7 @@ from cem.metrics.accs import compute_accuracy
 #         return concept_scores
 
 
-class CrossAttentionProjector(nn.Module):
+class CrossAttention(nn.Module):
     def __init__(self, embed_dim, image_feature_dim, use_residual=True):
         super().__init__()
         self.embed_dim = embed_dim
@@ -179,23 +179,16 @@ class CrossAttentionProjector(nn.Module):
         self.num_heads = 4
         self.head_dim = embed_dim // self.num_heads
 
-        # 图像特征投影层（新增）
         self.image_proj = nn.Linear(image_feature_dim, embed_dim)
-
-        # 概念查询投影
         self.concept_query_proj = nn.Linear(embed_dim, embed_dim)
 
-        # 多头注意力投影（简化结构）
         self.mh_concept = nn.Linear(embed_dim, self.num_heads * self.head_dim)
         self.mh_image = nn.Linear(embed_dim, 2 * self.num_heads * self.head_dim)
 
-        # 残差门控
         self.res_gate = nn.Linear(embed_dim, embed_dim) if use_residual else None
 
-        # 归一化层
         self.layer_norm = nn.LayerNorm(embed_dim)
 
-        # 得分预测
         self.score_proj = nn.Sequential(
             nn.LayerNorm(embed_dim),
             nn.Linear(embed_dim, embed_dim * 2),
@@ -208,34 +201,28 @@ class CrossAttentionProjector(nn.Module):
         self._init_weights()
 
     def _init_weights(self):
-        # 初始化投影层
         nn.init.xavier_uniform_(self.image_proj.weight)
         nn.init.zeros_(self.image_proj.bias)
 
         nn.init.xavier_uniform_(self.concept_query_proj.weight)
         nn.init.zeros_(self.concept_query_proj.bias)
 
-        # 多头投影初始化
         nn.init.normal_(self.mh_concept.weight, std=0.02)
         nn.init.normal_(self.mh_image.weight, std=0.02)
 
-        # 残差门控初始化
         if self.res_gate:
             nn.init.constant_(self.res_gate.weight, 0.)
             nn.init.constant_(self.res_gate.bias, 1.)
 
     def forward(self, image_feature, c_embedding):
-        B, _ = image_feature.shape  # 输入形状 [B, image_feature_dim]
-        N = c_embedding.size(1)  # 概念数量 [B, N, D]
+        B, _ = image_feature.shape  # [B, image_feature_dim]
+        N = c_embedding.size(1)  # [B, N, D]
 
-        # 图像特征处理（新增）
         image_feature = self.image_proj(image_feature)  # [B, D]
         image_feature = image_feature.unsqueeze(1)  # [B, 1, D]
 
-        # 概念查询投影
         concept_query = self.concept_query_proj(c_embedding)  # [B, N, D]
 
-        # 多头处理
         # 概念侧处理
         mh_query = self.mh_concept(concept_query).view(
             B, N, self.num_heads, self.head_dim).permute(0, 2, 1, 3)  # [B, h, N, d]
@@ -246,17 +233,14 @@ class CrossAttentionProjector(nn.Module):
         mh_key = mh_key.view(B, 1, self.num_heads, self.head_dim).permute(0, 2, 1, 3)  # [B, h, 1, d]
         mh_value = mh_value.view(B, 1, self.num_heads, self.head_dim).permute(0, 2, 1, 3)  # [B, h, 1, d]
 
-        # 注意力计算
         attn_logits = torch.matmul(mh_query, mh_key.transpose(-2, -1))  # [B, h, N, 1]
         attn_logits = attn_logits / (self.head_dim ** 0.5)
         attn_weights = F.softmax(attn_logits, dim=-1)
         attn_weights = F.dropout(attn_weights, p=0.1, training=self.training)
 
-        # 注意力聚合
         attended = torch.matmul(attn_weights, mh_value)  # [B, h, N, d]
         attended = attended.permute(0, 2, 1, 3).contiguous().view(B, N, -1)  # [B, N, D]
 
-        # 残差连接
         if self.use_residual:
             gate = torch.sigmoid(self.res_gate(attended))
             attended = gate * attended + (1 - gate) * c_embedding
@@ -265,7 +249,6 @@ class CrossAttentionProjector(nn.Module):
 
         attended = self.layer_norm(attended)
 
-        # 生成概念分数
         concept_scores = self.score_proj(attended).squeeze(-1)  # [B, N]
         return concept_scores
 
@@ -387,7 +370,7 @@ class SSCBM(CBM_SSL):
         else:
             self.c2y_model = c2y_model
 
-        self.cross_attn = CrossAttentionProjector(emb_size, list(self.pre_concept_model.modules())[-1].out_features)
+        self.cross_attn = CrossAttention(emb_size, list(self.pre_concept_model.modules())[-1].out_features)
 
         self.sigmoid = torch.nn.Sigmoid()
 
@@ -504,24 +487,12 @@ class SSCBM(CBM_SSL):
         c_embedding = (
                 contexts[:, :, :self.emb_size] * torch.unsqueeze(probs, dim=-1) +
                 contexts[:, :, self.emb_size:] * (1 - torch.unsqueeze(probs, dim=-1))
-        )
+        )  # [batch_size, n_concepts, D]
         c_pred = c_embedding.view((-1, self.emb_size * self.n_concepts))
         y = self.c2y_model(c_pred)
-        # image_feature = self.unlabeled_image_encoder(x)
-        image_feature = self.pre_concept_model(x)
 
-        # image_feature: [batch_size, H, W, D] (D is concept embedding size)
-        # c_embedding: [batch_size, n_concepts, D]
-        # heatmap: [batch_size, n_concepts, H, W]
-        # heatmap = []
-        # for i in range(len(image_feature)):
-        #     heatmap.append(torch.matmul(image_feature[i], c_embedding[i].transpose(0, 1)))
-        # heatmap = torch.stack(heatmap).permute(0, 3, 1, 2)
-        # c_pred_unlabeled = self.pooling(heatmap).squeeze()
-        # y_unlabeled = self.c2y_model_unlabeled(c_pred_unlabeled)
-        # c_pred_unlabeled = self.sigmoid(c_pred_unlabeled)
+        image_feature = self.pre_concept_model(x)  # [batch_size, resnet_out_features]
         c_pred_unlabeled = self.cross_attn(image_feature, c_embedding)
-        # c_pred_unlabeled = self.sigmoid(c_pred_unlabeled)
 
         tail_results = []
         if output_interventions:
