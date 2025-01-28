@@ -432,7 +432,7 @@ class CBM_SSL(pl.LightningModule):
 
     def training_step(self, batch, batch_idx):
         if batch_idx == 0:
-            logging.info(f"================================Epoch {self.current_epoch}===============================")
+            print(f"================================Epoch {self.current_epoch}===============================")
         loss, result = self._run_step(batch, batch_idx, train=True)
         for name, val in result.items():
             if name in ['c_f1', 'y_auc', 'avg_c_y_acc', 'y_f1']:

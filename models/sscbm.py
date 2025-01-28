@@ -10,54 +10,263 @@ from utils import visualize_and_save_heatmaps
 from cem.metrics.accs import compute_accuracy
 
 
+# class CrossAttentionProjector(nn.Module):
+#     def __init__(self, embed_dim, use_residual=True):
+#         super().__init__()
+#         self.concept_query = nn.Linear(embed_dim, embed_dim)
+#         self.image_key = nn.Linear(embed_dim, embed_dim)
+#         self.image_value = nn.Linear(embed_dim, embed_dim)
+#
+#         self.layer_norm = nn.LayerNorm(embed_dim)
+#         self.use_residual = use_residual
+#
+#         self.score_proj = nn.Sequential(
+#             nn.Linear(embed_dim, embed_dim),
+#             nn.GELU(),
+#             nn.Linear(embed_dim, 1)
+#         )
+#
+#     def forward(self, image_feature, c_embedding):
+#         """
+#         Args:
+#             image_feature: [B, H, W, D] 空间排列的图像特征
+#             c_embedding:   [B, N, D]     N个概念嵌入
+#         Returns:
+#             concept_scores: [B, N] 每个概念的预测分数
+#         """
+#         B, H, W, D = image_feature.shape
+#         image_flat = image_feature.view(B, H * W, D)  # [B, HW, D]
+#
+#         # 投影变换
+#         Q = self.concept_query(c_embedding)  # [B, N, D]
+#         K = self.image_key(image_flat)  # [B, HW, D]
+#         V = self.image_value(image_flat)  # [B, HW, D]
+#
+#         # 缩放点积注意力
+#         attn_logits = torch.einsum('bnd,bhd->bnh', Q, K) / (D ** 0.5)
+#
+#         spatial_bias = torch.randn(H * W).to(image_feature.device)
+#         attn_logits = attn_logits + spatial_bias[None, None, :]
+#
+#         attn_weights = F.softmax(attn_logits, dim=-1)  # [B, N, HW]
+#
+#         # 注意力加权聚合
+#         attended_values = torch.einsum('bnh,bhd->bnd', attn_weights, V)
+#
+#         if self.use_residual:
+#             attended_values = attended_values + c_embedding
+#         attended_values = self.layer_norm(attended_values)
+#
+#         concept_scores = self.score_proj(attended_values).squeeze(-1)  # [B, N]
+#         return concept_scores
+
+
+# class CrossAttentionProjector(nn.Module):
+#     def __init__(self, embed_dim, use_residual=True, image_size=10):
+#         super().__init__()
+#         self.embed_dim = embed_dim
+#         self.use_residual = use_residual
+#         self.num_heads = 4
+#         self.head_dim = embed_dim // self.num_heads
+#         self.image_size = image_size
+#
+#         # 原始投影层
+#         self.concept_query_proj = nn.Linear(embed_dim, embed_dim)
+#         self.image_key_proj = nn.Linear(embed_dim, embed_dim)
+#         self.image_value_proj = nn.Linear(embed_dim, embed_dim)
+#
+#         # 多头注意力投影
+#         self.mh_concept = nn.Linear(embed_dim, self.num_heads * self.head_dim)
+#         self.mh_image = nn.Linear(embed_dim, 2 * self.num_heads * self.head_dim)  # 同时生成key/value
+#
+#         # 位置编码
+#         self.image_pos_enc = nn.Parameter(torch.randn(1, image_size * image_size, embed_dim))
+#
+#         # 残差门控
+#         self.res_gate = nn.Linear(embed_dim, embed_dim) if use_residual else None
+#
+#         # 归一化层
+#         self.layer_norm = nn.LayerNorm(embed_dim)
+#
+#         # 得分预测
+#         self.score_proj = nn.Sequential(
+#             nn.LayerNorm(embed_dim),
+#             nn.Linear(embed_dim, embed_dim * 2),
+#             nn.GELU(),
+#             nn.Dropout(0.1),
+#             nn.Linear(embed_dim * 2, 1),
+#             nn.Sigmoid()
+#         )
+#
+#         # 初始化
+#         self._init_weights()
+#
+#     def _init_weights(self):
+#         # 原始投影层初始化
+#         for proj in [self.concept_query_proj, self.image_key_proj, self.image_value_proj]:
+#             nn.init.xavier_uniform_(proj.weight)
+#             nn.init.zeros_(proj.bias)
+#
+#         # 修正后的多头投影初始化
+#         nn.init.kaiming_normal_(self.mh_concept.weight, mode='fan_out', nonlinearity='relu')  # 关键修改点
+#         nn.init.normal_(self.mh_image.weight, std=0.02)
+#
+#         # 残差门控初始化
+#         if self.res_gate:
+#             nn.init.constant_(self.res_gate.weight, 0.)
+#             nn.init.constant_(self.res_gate.bias, 1.)
+#
+#     def forward(self, image_feature, c_embedding):
+#         B, H, W, D = image_feature.shape
+#         N = c_embedding.size(1)
+#
+#         # 图像特征预处理
+#         image_flat = image_feature.view(B, H * W, D)  # [B, HW, D]
+#         image_flat = image_flat + self.image_pos_enc  # 添加位置编码
+#
+#         # 原始投影
+#         base_query = self.concept_query_proj(c_embedding)  # [B, N, D]
+#         base_key = self.image_key_proj(image_flat)  # [B, HW, D]
+#         base_value = self.image_value_proj(image_flat)  # [B, HW, D]
+#
+#         # 多头处理
+#         # 概念多头查询
+#         mh_query = self.mh_concept(base_query).view(B, N, self.num_heads, self.head_dim)
+#         mh_query = mh_query.permute(0, 2, 1, 3)  # [B, h, N, d]
+#
+#         # 图像多头键值
+#         mh_key_value = self.mh_image(image_flat)
+#         mh_key, mh_value = mh_key_value.chunk(2, dim=-1)
+#         mh_key = mh_key.view(B, H * W, self.num_heads, self.head_dim).permute(0, 2, 1, 3)  # [B, h, HW, d]
+#         mh_value = mh_value.view(B, H * W, self.num_heads, self.head_dim).permute(0, 2, 1, 3)
+#
+#         # 注意力计算
+#         attn_logits = torch.matmul(mh_query, mh_key.transpose(-2, -1))  # [B, h, N, HW]
+#         attn_logits = attn_logits / (self.head_dim ** 0.5)
+#
+#         # 添加可学习的位置偏置
+#         if not hasattr(self, 'pos_bias'):
+#             self.pos_bias = nn.Parameter(torch.randn(1, self.num_heads, 1, H * W)).to(image_feature.device)
+#         attn_logits = attn_logits + self.pos_bias
+#
+#         # 注意力权重
+#         attn_weights = F.softmax(attn_logits, dim=-1)
+#         attn_weights = F.dropout(attn_weights, p=0.1, training=self.training)
+#
+#         # 注意力聚合
+#         attended = torch.matmul(attn_weights, mh_value)  # [B, h, N, d]
+#         attended = attended.permute(0, 2, 1, 3).contiguous().view(B, N, -1)  # [B, N, D]
+#
+#         # 残差连接
+#         if self.use_residual:
+#             gate = torch.sigmoid(self.res_gate(attended))
+#             attended = gate * attended + (1 - gate) * c_embedding
+#         else:
+#             attended = attended + c_embedding
+#
+#         attended = self.layer_norm(attended)
+#
+#         # 生成分数
+#         concept_scores = self.score_proj(attended).squeeze(-1)  # [B, N]
+#         return concept_scores
+
+
 class CrossAttentionProjector(nn.Module):
-    def __init__(self, embed_dim, use_residual=True):
+    def __init__(self, embed_dim, image_feature_dim, use_residual=True):
         super().__init__()
-        self.concept_query = nn.Linear(embed_dim, embed_dim)
-        self.image_key = nn.Linear(embed_dim, embed_dim)
-        self.image_value = nn.Linear(embed_dim, embed_dim)
-
-        self.layer_norm = nn.LayerNorm(embed_dim)
+        self.embed_dim = embed_dim
         self.use_residual = use_residual
+        self.num_heads = 4
+        self.head_dim = embed_dim // self.num_heads
 
+        # 图像特征投影层（新增）
+        self.image_proj = nn.Linear(image_feature_dim, embed_dim)
+
+        # 概念查询投影
+        self.concept_query_proj = nn.Linear(embed_dim, embed_dim)
+
+        # 多头注意力投影（简化结构）
+        self.mh_concept = nn.Linear(embed_dim, self.num_heads * self.head_dim)
+        self.mh_image = nn.Linear(embed_dim, 2 * self.num_heads * self.head_dim)
+
+        # 残差门控
+        self.res_gate = nn.Linear(embed_dim, embed_dim) if use_residual else None
+
+        # 归一化层
+        self.layer_norm = nn.LayerNorm(embed_dim)
+
+        # 得分预测
         self.score_proj = nn.Sequential(
-            nn.Linear(embed_dim, embed_dim),
+            nn.LayerNorm(embed_dim),
+            nn.Linear(embed_dim, embed_dim * 2),
             nn.GELU(),
-            nn.Linear(embed_dim, 1)
+            nn.Dropout(0.1),
+            nn.Linear(embed_dim * 2, 1),
+            nn.Sigmoid()
         )
 
+        self._init_weights()
+
+    def _init_weights(self):
+        # 初始化投影层
+        nn.init.xavier_uniform_(self.image_proj.weight)
+        nn.init.zeros_(self.image_proj.bias)
+
+        nn.init.xavier_uniform_(self.concept_query_proj.weight)
+        nn.init.zeros_(self.concept_query_proj.bias)
+
+        # 多头投影初始化
+        nn.init.normal_(self.mh_concept.weight, std=0.02)
+        nn.init.normal_(self.mh_image.weight, std=0.02)
+
+        # 残差门控初始化
+        if self.res_gate:
+            nn.init.constant_(self.res_gate.weight, 0.)
+            nn.init.constant_(self.res_gate.bias, 1.)
+
     def forward(self, image_feature, c_embedding):
-        """
-        Args:
-            image_feature: [B, H, W, D] 空间排列的图像特征
-            c_embedding:   [B, N, D]     N个概念嵌入
-        Returns:
-            concept_scores: [B, N] 每个概念的预测分数
-        """
-        B, H, W, D = image_feature.shape
-        image_flat = image_feature.view(B, H * W, D)  # [B, HW, D]
+        B, _ = image_feature.shape  # 输入形状 [B, image_feature_dim]
+        N = c_embedding.size(1)  # 概念数量 [B, N, D]
 
-        # 投影变换
-        Q = self.concept_query(c_embedding)  # [B, N, D]
-        K = self.image_key(image_flat)  # [B, HW, D]
-        V = self.image_value(image_flat)  # [B, HW, D]
+        # 图像特征处理（新增）
+        image_feature = self.image_proj(image_feature)  # [B, D]
+        image_feature = image_feature.unsqueeze(1)  # [B, 1, D]
 
-        # 缩放点积注意力
-        attn_logits = torch.einsum('bnd,bhd->bnh', Q, K) / (D ** 0.5)
+        # 概念查询投影
+        concept_query = self.concept_query_proj(c_embedding)  # [B, N, D]
 
-        spatial_bias = torch.randn(H * W).to(image_feature.device)
-        attn_logits = attn_logits + spatial_bias[None, None, :]
+        # 多头处理
+        # 概念侧处理
+        mh_query = self.mh_concept(concept_query).view(
+            B, N, self.num_heads, self.head_dim).permute(0, 2, 1, 3)  # [B, h, N, d]
 
-        attn_weights = F.softmax(attn_logits, dim=-1)  # [B, N, HW]
+        # 图像侧处理
+        mh_key_value = self.mh_image(image_feature)  # [B, 1, 2*h*d]
+        mh_key, mh_value = mh_key_value.chunk(2, dim=-1)
+        mh_key = mh_key.view(B, 1, self.num_heads, self.head_dim).permute(0, 2, 1, 3)  # [B, h, 1, d]
+        mh_value = mh_value.view(B, 1, self.num_heads, self.head_dim).permute(0, 2, 1, 3)  # [B, h, 1, d]
 
-        # 注意力加权聚合
-        attended_values = torch.einsum('bnh,bhd->bnd', attn_weights, V)
+        # 注意力计算
+        attn_logits = torch.matmul(mh_query, mh_key.transpose(-2, -1))  # [B, h, N, 1]
+        attn_logits = attn_logits / (self.head_dim ** 0.5)
+        attn_weights = F.softmax(attn_logits, dim=-1)
+        attn_weights = F.dropout(attn_weights, p=0.1, training=self.training)
 
+        # 注意力聚合
+        attended = torch.matmul(attn_weights, mh_value)  # [B, h, N, d]
+        attended = attended.permute(0, 2, 1, 3).contiguous().view(B, N, -1)  # [B, N, D]
+
+        # 残差连接
         if self.use_residual:
-            attended_values = attended_values + c_embedding
-        attended_values = self.layer_norm(attended_values)
+            gate = torch.sigmoid(self.res_gate(attended))
+            attended = gate * attended + (1 - gate) * c_embedding
+        else:
+            attended = attended + c_embedding
 
-        concept_scores = self.score_proj(attended_values).squeeze(-1)  # [B, N]
+        attended = self.layer_norm(attended)
+
+        # 生成概念分数
+        concept_scores = self.score_proj(attended).squeeze(-1)  # [B, N]
         return concept_scores
 
 
@@ -101,11 +310,6 @@ class SSCBM(CBM_SSL):
         self.output_interventions = output_interventions
         self.intervention_policy = intervention_policy
         self.pre_concept_model = c_extractor_arch(output_dim=None)
-        for param in self.pre_concept_model.parameters():
-            param.requires_grad = False
-        self.image_encoder = c_extractor_arch(output_dim=None)
-        for param in self.image_encoder.parameters():
-            param.requires_grad = False
         self.training_intervention_prob = training_intervention_prob
         self.output_latent = output_latent
         if self.training_intervention_prob != 0:
@@ -183,7 +387,7 @@ class SSCBM(CBM_SSL):
         else:
             self.c2y_model = c2y_model
 
-        self.cross_attn = CrossAttentionProjector(embed_dim=emb_size)
+        self.cross_attn = CrossAttentionProjector(emb_size, list(self.pre_concept_model.modules())[-1].out_features)
 
         self.sigmoid = torch.nn.Sigmoid()
 
@@ -234,20 +438,6 @@ class SSCBM(CBM_SSL):
         intervention_idxs = intervention_idxs.type(torch.FloatTensor)
         intervention_idxs = intervention_idxs.to(prob.device)
         return prob * (1 - intervention_idxs) + intervention_idxs * c_true, intervention_idxs
-
-    def unlabeled_image_encoder(self, x):
-        x = self.image_encoder.conv1(x)
-        x = self.image_encoder.bn1(x)
-        x = self.image_encoder.relu(x)
-        x = self.image_encoder.maxpool(x)
-
-        x = self.image_encoder.layer1(x)
-        x = self.image_encoder.layer2(x)
-        x = self.image_encoder.layer3(x)
-        x = self.image_encoder.layer4(x)
-        x = x.transpose(1, 3)
-        x = self.fc(x)
-        return x
 
     def _forward(
             self,
@@ -317,7 +507,8 @@ class SSCBM(CBM_SSL):
         )
         c_pred = c_embedding.view((-1, self.emb_size * self.n_concepts))
         y = self.c2y_model(c_pred)
-        image_feature = self.unlabeled_image_encoder(x)
+        # image_feature = self.unlabeled_image_encoder(x)
+        image_feature = self.pre_concept_model(x)
 
         # image_feature: [batch_size, H, W, D] (D is concept embedding size)
         # c_embedding: [batch_size, n_concepts, D]
@@ -330,7 +521,7 @@ class SSCBM(CBM_SSL):
         # y_unlabeled = self.c2y_model_unlabeled(c_pred_unlabeled)
         # c_pred_unlabeled = self.sigmoid(c_pred_unlabeled)
         c_pred_unlabeled = self.cross_attn(image_feature, c_embedding)
-        c_pred_unlabeled = self.sigmoid(c_pred_unlabeled)
+        # c_pred_unlabeled = self.sigmoid(c_pred_unlabeled)
 
         tail_results = []
         if output_interventions:
