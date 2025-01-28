@@ -121,7 +121,7 @@ def train_end_to_end_model(
         imbalance=imbalance,
         task_class_weights=task_class_weights,
     )
-    logging.info(f"{model}")
+    # logging.info(f"{model}")
     logging.info(f"Number of parameters in model: {sum(p.numel() for p in model.parameters() if p.requires_grad)}")
     logging.info(f"Number of non-trainable parameters in model: "
                  f"{sum(p.numel() for p in model.parameters() if not p.requires_grad)}")

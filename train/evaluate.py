@@ -261,9 +261,7 @@ def evaluate_representation_metrics(
         )
 
         repr_task_pred_key = f'test_repr_task_pred'
-        logging.info(
-            f"Computing avg task predictibility from learnt concept reprs..."
-        )
+        logging.info(f"Computing avg task predictibility from learnt concept reprs...")
         repr_task_pred, loaded = utils.execute_and_save(
             fun=utils.load_call,
             kwargs=dict(

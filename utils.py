@@ -18,8 +18,6 @@ import data.mnist_loader as mnist_data_module
 import data.celeba_loader as celeba_data_module
 from data.synthetic_loader import get_synthetic_data, get_synthetic_num_features, get_synthetic_extractor_arch
 
-os.environ["CUDA_VISIBLE_DEVICES"] = "0"
-
 
 def zipdir(path, zipf, include_format):
     for root, dirs, files in os.walk(path):

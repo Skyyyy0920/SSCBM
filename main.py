@@ -2,11 +2,10 @@ import yaml
 import zipfile
 from collections import defaultdict
 
+from configs.basic_config import *
 from utils import *
 from train.training import *
 from train.evaluate import *
-from configs.basic_config import *
-
 import interventions.utils as intervention_utils
 
 if __name__ == '__main__':
@@ -21,6 +20,9 @@ if __name__ == '__main__':
     logging.info(f"Saving path: {save_dir}")
     with open(f"configs/{args.dataset}.yaml", "r") as f:
         experiment_config = yaml.load(f, Loader=yaml.FullLoader)
+
+    logging.info(f"GPU number: {torch.cuda.device_count()}")
+    logging.info(f"current GPU: {torch.cuda.current_device()}")
 
     # ==================================================================================================
     # 2. Save codes and settings
@@ -152,7 +154,7 @@ if __name__ == '__main__':
                     run_name=run_name,
                     prefix="",
                 )
-                
+
             update_statistics(
                 aggregate_results=results[run_name],
                 run_config=run_config,

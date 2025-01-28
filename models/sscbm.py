@@ -51,8 +51,7 @@ class SSCBM(CBM_SSL):
         self.output_interventions = output_interventions
         self.intervention_policy = intervention_policy
         self.pre_concept_model = c_extractor_arch(output_dim=None)
-        for param in self.pre_concept_model.parameters():
-            param.requires_grad = False
+        self.image_encoder = c_extractor_arch(output_dim=None)
         self.training_intervention_prob = training_intervention_prob
         self.output_latent = output_latent
         if self.training_intervention_prob != 0:
@@ -184,16 +183,15 @@ class SSCBM(CBM_SSL):
         return prob * (1 - intervention_idxs) + intervention_idxs * c_true, intervention_idxs
 
     def unlabeled_image_encoder(self, x):
-        # self.pre_concept_model resnet34
-        x = self.pre_concept_model.conv1(x)
-        x = self.pre_concept_model.bn1(x)
-        x = self.pre_concept_model.relu(x)
-        x = self.pre_concept_model.maxpool(x)
+        x = self.image_encoder.conv1(x)
+        x = self.image_encoder.bn1(x)
+        x = self.image_encoder.relu(x)
+        x = self.image_encoder.maxpool(x)
 
-        x = self.pre_concept_model.layer1(x)
-        x = self.pre_concept_model.layer2(x)
-        x = self.pre_concept_model.layer3(x)
-        x = self.pre_concept_model.layer4(x)
+        x = self.image_encoder.layer1(x)
+        x = self.image_encoder.layer2(x)
+        x = self.image_encoder.layer3(x)
+        x = self.image_encoder.layer4(x)
         x = x.transpose(1, 3)
         x = self.fc(x)
         return x
@@ -415,7 +413,7 @@ class SSCBM(CBM_SSL):
             output_dir='heatmap',
             concept_set=None,
     ):
-        pre_c = self.pre_concept_model(x)
+        pre_c = self.image_encoder(x)
         contexts = []
         c_sem = []
 

@@ -263,7 +263,7 @@ def load_data(
     )
 
     if is_training:
-        drop_last = True
+        drop_last = False  # data is limited
         shuffle = True
     else:
         drop_last = False

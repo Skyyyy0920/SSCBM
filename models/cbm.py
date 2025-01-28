@@ -391,6 +391,7 @@ class CBM_SSL(pl.LightningModule):
         nbr_w_ = nbr_w.unsqueeze(-1).repeat(1, 1, nbr_c.size(2))
         c_pseudo = nbr_c * nbr_w_
         c_pseudo = torch.sum(c_pseudo, dim=1) / nbr_w.size(1)
+        c_pseudo = c_pseudo.float()
 
         outputs = self._forward(
             x,
@@ -412,7 +413,7 @@ class CBM_SSL(pl.LightningModule):
             task_loss_scalar = 0
         if self.concept_loss_weight != 0:
             concept_loss = self.loss_concept(c_sem[l], c[l])
-            concept_loss = concept_loss + self.loss_concept(c_sem[~l], c[~l])  # TODO: unlabeled data using pseudo label
+            concept_loss += self.loss_concept(c_sem[~l], c_pseudo[~l])  # TODO: unlabeled data using pseudo label
             concept_loss_scalar = concept_loss.detach()
             loss = self.concept_loss_weight * concept_loss + task_loss
         else:
