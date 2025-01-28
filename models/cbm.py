@@ -151,14 +151,9 @@ class CBM_SSL(pl.LightningModule):
         ):
             return None
         if not isinstance(intervention_idxs, torch.Tensor):
-            raise ValueError(
-                f'Unsupported intervention indices {intervention_idxs}'
-            )
+            raise ValueError(f'Unsupported intervention indices {intervention_idxs}')
         if len(intervention_idxs.shape) == 1:
-            intervention_idxs = torch.tile(
-                torch.unsqueeze(intervention_idxs, 0),
-                (batch_size, 1),
-            )
+            intervention_idxs = torch.tile(torch.unsqueeze(intervention_idxs, 0), (batch_size, 1))
         elif len(intervention_idxs.shape) == 2:
             assert intervention_idxs.shape[0] == batch_size, (
                 f'Expected intervention indices to have batch size {batch_size} '

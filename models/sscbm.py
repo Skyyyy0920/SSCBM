@@ -1,7 +1,6 @@
 import torch
-import logging
-import sklearn
-from torch import nn
+import torch.nn as nn
+import torch.nn.functional as F
 import numpy as np
 import pytorch_lightning as pl
 from torchvision.models import resnet50
@@ -10,36 +9,22 @@ import train.utils as utils
 from utils import visualize_and_save_heatmaps
 from cem.metrics.accs import compute_accuracy
 
-import torch
-import torch.nn as nn
-import torch.nn.functional as F
-
 
 class CrossAttentionProjector(nn.Module):
     def __init__(self, embed_dim, use_residual=True):
         super().__init__()
-        # 概念到query的投影
         self.concept_query = nn.Linear(embed_dim, embed_dim)
-        # 图像特征到key/value的投影
         self.image_key = nn.Linear(embed_dim, embed_dim)
         self.image_value = nn.Linear(embed_dim, embed_dim)
 
         self.layer_norm = nn.LayerNorm(embed_dim)
-        self.use_residual = use_residual  # 是否使用残差连接
+        self.use_residual = use_residual
 
-        # 得分投影
         self.score_proj = nn.Sequential(
-            nn.Linear(embed_dim, embed_dim // 2),
+            nn.Linear(embed_dim, embed_dim),
             nn.GELU(),
-            nn.Linear(embed_dim // 2, 1)
+            nn.Linear(embed_dim, 1)
         )
-
-        # 修改__init__部分
-        self.num_heads = 4
-        self.head_dim = embed_dim // self.num_heads
-        self.concept_query = nn.Linear(embed_dim, self.num_heads * self.head_dim)
-        self.image_key = nn.Linear(embed_dim, self.num_heads * self.head_dim)
-        self.image_value = nn.Linear(embed_dim, self.num_heads * self.head_dim)
 
     def forward(self, image_feature, c_embedding):
         """
@@ -49,17 +34,16 @@ class CrossAttentionProjector(nn.Module):
         Returns:
             concept_scores: [B, N] 每个概念的预测分数
         """
-        # 维度调整
         B, H, W, D = image_feature.shape
         image_flat = image_feature.view(B, H * W, D)  # [B, HW, D]
 
         # 投影变换
-        queries = self.concept_query(c_embedding)  # [B, N, D]
-        keys = self.image_key(image_flat)  # [B, HW, D]
-        values = self.image_value(image_flat)  # [B, HW, D]
+        Q = self.concept_query(c_embedding)  # [B, N, D]
+        K = self.image_key(image_flat)  # [B, HW, D]
+        V = self.image_value(image_flat)  # [B, HW, D]
 
         # 缩放点积注意力
-        attn_logits = torch.einsum('bnd,bhd->bnh', queries, keys) / (D ** 0.5)
+        attn_logits = torch.einsum('bnd,bhd->bnh', Q, K) / (D ** 0.5)
 
         spatial_bias = torch.randn(H * W).to(image_feature.device)
         attn_logits = attn_logits + spatial_bias[None, None, :]
@@ -67,13 +51,12 @@ class CrossAttentionProjector(nn.Module):
         attn_weights = F.softmax(attn_logits, dim=-1)  # [B, N, HW]
 
         # 注意力加权聚合
-        attended_values = torch.einsum('bnh,bhd->bnd', attn_weights, values)
+        attended_values = torch.einsum('bnh,bhd->bnd', attn_weights, V)
 
         if self.use_residual:
-            attended_values = attended_values + c_embedding  # 残差连接
+            attended_values = attended_values + c_embedding
         attended_values = self.layer_norm(attended_values)
 
-        # 生成概念得分
         concept_scores = self.score_proj(attended_values).squeeze(-1)  # [B, N]
         return concept_scores
 
@@ -199,13 +182,6 @@ class SSCBM(CBM_SSL):
             self.c2y_model = torch.nn.Sequential(*layers)
         else:
             self.c2y_model = c2y_model
-        units = [n_concepts] + (c2y_layers or []) + [n_tasks]
-        layers = []
-        for i in range(1, len(units)):
-            layers.append(torch.nn.Linear(units[i - 1], units[i]))
-            if i != len(units) - 1:
-                layers.append(torch.nn.LeakyReLU())
-        self.c2y_model_unlabeled = torch.nn.Sequential(*layers)
 
         self.cross_attn = CrossAttentionProjector(embed_dim=emb_size)
 
@@ -215,9 +191,7 @@ class SSCBM(CBM_SSL):
         self.loss_concept_unlabeled = torch.nn.BCELoss(weight=weight_loss)
         self.loss_task = (
             torch.nn.CrossEntropyLoss(weight=task_class_weights)
-            if n_tasks > 1 else torch.nn.BCEWithLogitsLoss(
-                weight=task_class_weights
-            )
+            if n_tasks > 1 else torch.nn.BCEWithLogitsLoss(weight=task_class_weights)
         )
         self.concept_loss_weight_labeled = concept_loss_weight_labeled
         self.concept_loss_weight_unlabeled = concept_loss_weight_unlabeled
@@ -311,9 +285,7 @@ class SSCBM(CBM_SSL):
         else:
             contexts, c_sem = latent
 
-        if (intervention_idxs is None) and (c is not None) and (
-                self.intervention_policy is not None
-        ):
+        if (intervention_idxs is None) and (c is not None) and (self.intervention_policy is not None):
             intervention_idxs, c_int = self.intervention_policy(
                 x=x,
                 c=c,
@@ -323,14 +295,11 @@ class SSCBM(CBM_SSL):
                 prev_interventions=prev_interventions,
                 prior_distribution=None,
             )
-
         else:
             c_int = c
+
         if not train:
-            intervention_idxs = self._standardize_indices(
-                intervention_idxs=intervention_idxs,
-                batch_size=x.shape[0],
-            )
+            intervention_idxs = self._standardize_indices(intervention_idxs=intervention_idxs, batch_size=x.shape[0])
 
         probs, intervention_idxs = self._after_interventions(
             c_sem,
@@ -361,7 +330,6 @@ class SSCBM(CBM_SSL):
         # y_unlabeled = self.c2y_model_unlabeled(c_pred_unlabeled)
         # c_pred_unlabeled = self.sigmoid(c_pred_unlabeled)
         c_pred_unlabeled = self.cross_attn(image_feature, c_embedding)
-        y_unlabeled = self.c2y_model_unlabeled(c_pred_unlabeled)
         c_pred_unlabeled = self.sigmoid(c_pred_unlabeled)
 
         tail_results = []
@@ -378,7 +346,7 @@ class SSCBM(CBM_SSL):
             tail_results.append(contexts[:, :, :self.emb_size])
             tail_results.append(contexts[:, :, self.emb_size:])
 
-        return tuple([c_sem, c_pred, c_pred_unlabeled, y, y_unlabeled] + tail_results)
+        return tuple([c_sem, c_pred, c_pred_unlabeled, y] + tail_results)
 
     def _run_step(
             self,
@@ -404,9 +372,8 @@ class SSCBM(CBM_SSL):
             intervention_idxs=intervention_idxs,
         )
         c_sem, c_pred_labeled, c_pred_unlabeled, y_pred = outputs[0], outputs[1], outputs[2], outputs[3]
-        y_pred_unlabeled = outputs[4]
 
-        task_loss = self.loss_task(y_pred, y) + self.loss_task(y_pred_unlabeled[~l], y[~l])
+        task_loss = self.loss_task(y_pred, y)
         task_loss_scalar = task_loss.detach()
 
         concept_loss_labeled = self.loss_concept_labeled(c_sem[l], c[l])
@@ -440,7 +407,7 @@ class SSCBM(CBM_SSL):
 
     def training_step(self, batch, batch_idx):
         if batch_idx == 0:
-            logging.info(f"================================Epoch {self.current_epoch}===============================")
+            print(f"================================Epoch {self.current_epoch}===============================")
         loss, result = self._run_step(batch, batch_idx, train=True)
         for name, val in result.items():
             if name in ['c_f1', 'y_auc', 'avg_c_y_acc', 'y_f1']:
