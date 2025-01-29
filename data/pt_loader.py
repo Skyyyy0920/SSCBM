@@ -1,17 +1,22 @@
 import os
+import math
+import glob
 import torch
+import random
 import logging
 import numpy as np
 import pandas as pd
 from PIL import Image
 from collections import defaultdict
-import glob
 from pathlib import Path
 from torch.utils.data import Dataset, DataLoader
 from torchvision import transforms
 from torchvision.models import resnet50
 from tqdm import tqdm
 from sklearn.neighbors import NearestNeighbors
+
+N_CLASSES = 5
+N_CONCEPTS = 19
 
 
 class Derm7ptDataset(Dataset):
@@ -57,16 +62,14 @@ class Derm7ptDataset(Dataset):
 
         self.concept_columns = list(self.concept_mappings.keys())
 
+        each_class_num = math.ceil(labeled_ratio * len(self.data) / N_CLASSES)
         if training:
-            np.random.seed(seed)
-            class_count = defaultdict(int)
-            for _, row in self.data.iterrows():
-                class_count[self.diagnosis_groups[row['diagnosis']]] += 1
+            random.seed(seed)
 
             labeled_count = defaultdict(int)
             for idx, row in self.data.iterrows():
                 class_label = self.diagnosis_groups[row['diagnosis']]
-                if labeled_count[class_label] < labeled_ratio * class_count[class_label]:
+                if labeled_count[class_label] < each_class_num:
                     self.l_choice[idx] = True
                     labeled_count[class_label] += 1
                 else:
@@ -79,9 +82,12 @@ class Derm7ptDataset(Dataset):
         for idx in range(len(self.l_choice)):
             if self.l_choice[idx]:
                 count += 1
+
+        logging.info(f"each class number: {each_class_num}")
         logging.info(f"actual labeled ratio: {count / len(self.l_choice)}")
 
-        self.neighbor = self.nearest_neighbors_resnet(k=2)
+        neighbor_num = each_class_num if each_class_num <= 2 else 3
+        self.neighbor = self.nearest_neighbors_resnet(k=neighbor_num)
 
     def _create_file_mapping(self, image_dir):
         mapping = {}
@@ -238,10 +244,7 @@ def load_data(
         concept_transform=None,
         label_transform=None,
 ):
-    resized_resol = int(resol * 256 / 224)
-    is_training = training
-
-    if is_training:
+    if training:
         transform = transforms.Compose([
             transforms.ColorJitter(brightness=32 / 255, saturation=(0.5, 1.5)),
             transforms.RandomResizedCrop(resol),
@@ -269,7 +272,7 @@ def load_data(
         label_transform=label_transform,
     )
 
-    if is_training:
+    if training:
         drop_last = False  # data is limited
         shuffle = True
     else:
@@ -296,17 +299,6 @@ def generate_data(
     train_index_csv = os.path.join(root_dir, 'meta/train_indexes.csv')
     val_index_csv = os.path.join(root_dir, 'meta/valid_indexes.csv')
     test_index_csv = os.path.join(root_dir, 'meta/test_indexes.csv')
-
-    tmp_dataset = Derm7ptDataset(
-        meta_csv=meta_csv,
-        index_csv=train_index_csv,
-        image_dir=os.path.join(root_dir, 'images'),
-        labeled_ratio=1.0,
-        training=False,
-        root_dir=root_dir
-    )
-    N_CONCEPTS = tmp_dataset._get_total_concept_dims()
-    N_CLASSES = 5
 
     train_dl = load_data(
         meta_csv=meta_csv,

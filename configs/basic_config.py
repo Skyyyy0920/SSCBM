@@ -22,11 +22,6 @@ def get_args():
         # default='PBC',
         default='7pt',
         # default='AwA2',
-        # default='MNIST',
-        # default='XOR',
-        # default='Dot',
-        # default='Trigonometric',
-        # default='vector',
         help='Dataset name')
     parser.add_argument(
         '--labeled_ratio',

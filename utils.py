@@ -14,9 +14,7 @@ import data.pt_loader as pt_data_module
 import data.pbc_loader as pbc_data_module
 import data.cub_loader as cub_data_module
 import data.awa2_loader as awa_data_module
-import data.mnist_loader as mnist_data_module
 import data.celeba_loader as celeba_data_module
-from data.synthetic_loader import get_synthetic_data, get_synthetic_num_features, get_synthetic_extractor_arch
 
 
 def zipdir(path, zipf, include_format):
@@ -103,24 +101,10 @@ def generate_dataset_and_update_config(experiment_config, args):
         data_module = pt_data_module
     elif args.dataset == "CelebA":
         data_module = celeba_data_module
-    elif args.dataset == "MNIST":
-        data_module = mnist_data_module
     elif args.dataset == "AwA2":
         data_module = awa_data_module
-    elif args.dataset in ["XOR", "vector", "Dot", "Trigonometric"]:
-        data_module = get_synthetic_data(dataset_config["dataset"])
     else:
         raise ValueError(f"Unsupported dataset {dataset_config['dataset']}!")
-
-    if experiment_config['c_extractor_arch'] == "mnist_extractor":
-        num_operands = dataset_config.get('num_operands', 32)
-        experiment_config["c_extractor_arch"] = mnist_data_module.get_mnist_extractor_arch(
-            input_shape=(dataset_config.get('batch_size', 512), num_operands, 28, 28),
-            num_operands=num_operands,
-        )
-    elif experiment_config['c_extractor_arch'] == 'synth_extractor':
-        input_features = get_synthetic_num_features(dataset_config["dataset"])
-        experiment_config["c_extractor_arch"] = get_synthetic_extractor_arch(input_features)
 
     train_dl, val_dl, test_dl, imbalance, (n_concepts, n_tasks, concept_map) = data_module.generate_data(
         config=dataset_config,
@@ -132,21 +116,9 @@ def generate_dataset_and_update_config(experiment_config, args):
     intervention_config = experiment_config.get('intervention_config', {})
     acquisition_costs = None
     if concept_map is not None:
-        intervened_groups = list(
-            range(
-                0,
-                len(concept_map) + 1,
-                intervention_config.get('intervention_freq', 1),
-            )
-        )
+        intervened_groups = list(range(0, len(concept_map) + 1, intervention_config.get('intervention_freq', 1)))
     else:
-        intervened_groups = list(
-            range(
-                0,
-                n_concepts + 1,
-                intervention_config.get('intervention_freq', 1),
-            )
-        )
+        intervened_groups = list(range(0, n_concepts + 1, intervention_config.get('intervention_freq', 1)))
 
     task_class_weights = update_config_with_dataset(
         config=experiment_config,

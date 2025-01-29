@@ -96,10 +96,6 @@ CONCEPT_SEMANTICS = [
 ]
 
 
-##########################################################
-# Self-defined Dataset
-##########################################################\
-
 class CelebaDataset(Dataset):
     def __init__(self, ds, labeled_ratio, training,
                  seed=42, transform=None,
@@ -196,11 +192,6 @@ class CelebaDataset(Dataset):
         return img_data[0], class_label, torch.FloatTensor(attr_label), torch.tensor(l), nbr_concepts, nbr_weight
 
 
-##########################################################
-# SIMPLIFIED LOADER FUNCTION FOR STANDARDIZATION
-##########################################################
-
-
 def generate_data(
         config,
         labeled_ratio=0.1,
@@ -238,22 +229,13 @@ def generate_data(
             lambda x: x[0],
             sorted(enumerate(np.abs(concept_freq - 0.5)), key=lambda x: x[1]),
         ))
-        num_concepts = config.get(
-            'num_concepts',
-            celeba_train_data.attr.shape[-1],
-        )
+        num_concepts = config.get( 'num_concepts', celeba_train_data.attr.shape[-1]  )
         concept_idxs = sorted_concepts[:num_concepts]
         concept_idxs = sorted(concept_idxs)
         if config.get('num_hidden_concepts', 0):
             num_hidden = config.get('num_hidden_concepts', 0)
             hidden_concepts = sorted(
-                sorted_concepts[
-                num_concepts:min(
-                    (num_concepts + num_hidden),
-                    len(sorted_concepts)
-                )
-                ]
-            )
+                sorted_concepts[num_concepts:min((num_concepts + num_hidden), len(sorted_concepts))])
         else:
             hidden_concepts = []
         logging.info(f"Selecting concepts: {concept_idxs}")
@@ -388,9 +370,6 @@ def generate_data(
             ]),
             target_transform=lambda x: [
                 torch.tensor(
-                    # If it is not in our map, then we make it be the token
-                    # label configs['num_classes'] which will be removed
-                    # afterwards
                     label_remap.get(
                         x[0].cpu().detach().item() - 1,
                         config['num_classes']
@@ -451,8 +430,6 @@ def generate_data(
         num_workers=config['num_workers'],
     )
 
-    # Finally, determine whether or not we will need to compute the imbalance
-    # factors
     if config.get('weight_loss', False):
         attribute_count = np.zeros((num_concepts,))
         samples_seen = 0

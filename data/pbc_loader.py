@@ -1,4 +1,5 @@
 import os
+import math
 import pandas as pd
 import torch
 from torch.utils.data import Dataset, DataLoader
@@ -11,6 +12,9 @@ import logging
 import numpy as np
 from sklearn.neighbors import NearestNeighbors
 from tqdm import tqdm
+
+N_CONCEPTS = 31
+N_CLASSES = 5
 
 
 class PBCDataset(Dataset):
@@ -45,16 +49,13 @@ class PBCDataset(Dataset):
         for concept, value_map in self.concept_maps.items():
             print(f"{concept}: {value_map}")
 
+        each_class_num = math.ceil(labeled_ratio * len(self.data) / N_CLASSES)
         if training:
             random.seed(seed)
-            class_count = defaultdict(int)
-            for _, row in self.data.iterrows():
-                class_count[row['label']] += 1
-
             labeled_count = defaultdict(int)
             for idx, row in self.data.iterrows():
                 class_label = row['label']
-                if labeled_count[class_label] < labeled_ratio * class_count[class_label]:
+                if labeled_count[class_label] < each_class_num:
                     self.l_choice[idx] = True
                     labeled_count[class_label] += 1
                 else:
@@ -67,9 +68,12 @@ class PBCDataset(Dataset):
         for idx in range(len(self.l_choice)):
             if self.l_choice[idx]:
                 count += 1
+
+        logging.info(f"each class number: {each_class_num}")
         logging.info(f"actual labeled ratio: {count / len(self.l_choice)}")
 
-        self.neighbor = self.nearest_neighbors_resnet(k=2)
+        neighbor_num = each_class_num if each_class_num <= 2 else 3
+        self.neighbor = self.nearest_neighbors_resnet(k=neighbor_num)
 
     def _get_concept_vector(self, row):
         concept_vector = []
@@ -231,9 +235,6 @@ def generate_data(
     train_data_path = os.path.join(root_dir, 'PBC_dataset_normal_DIB/pbc_attr_v1_train.csv')
     val_data_path = os.path.join(root_dir, 'PBC_dataset_normal_DIB/pbc_attr_v1_val.csv')
     test_data_path = os.path.join(root_dir, 'PBC_dataset_normal_DIB/pbc_attr_v1_test.csv')
-
-    N_CONCEPTS = 31
-    N_CLASSES = 5
 
     train_dl = load_data(
         labeled_ratio=labeled_ratio,
