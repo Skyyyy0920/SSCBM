@@ -1,5 +1,6 @@
 import os
 import torch
+import logging
 import numpy as np
 import pandas as pd
 from PIL import Image
@@ -73,6 +74,12 @@ class Derm7ptDataset(Dataset):
         else:
             for idx in range(len(self.data)):
                 self.l_choice[idx] = True
+
+        count = 0
+        for idx in range(len(self.l_choice)):
+            if self.l_choice[idx]:
+                count += 1
+        logging.info(f"actual labeled ratio: {count / len(self.l_choice)}")
 
         self.neighbor = self.nearest_neighbors_resnet(k=2)
 
