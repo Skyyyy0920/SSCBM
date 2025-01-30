@@ -42,8 +42,8 @@ class AwA2Dataset(Dataset):
                 self.l_choice[idx] = True
 
         count = 0
-        for idx in range(len(self.l_choice)):
-            if self.l_choice[idx]:
+        for key, value in self.l_choice.items():
+            if value:
                 count += 1
         logging.info(f"each class number: {each_class_num}")
         logging.info(f"actual labeled ratio: {count / len(self.l_choice)}")

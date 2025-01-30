@@ -26,7 +26,7 @@ def get_args():
     parser.add_argument(
         '--labeled_ratio',
         type=float,
-        default=0.05,
+        default=0.1,
         help='The proportion of the labeled data')
     parser.add_argument(
         '--image_encoder',
