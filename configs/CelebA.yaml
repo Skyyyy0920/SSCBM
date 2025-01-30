@@ -11,7 +11,7 @@ dataset_config:
   image_size: 299
   num_classes: 1000
   batch_size: 512
-  root_dir: data/
+  root_dir: W:\Semi-supervised Concept Bottleneck Models\Datasets\
   use_imbalance: True
   use_binary_vector_class: True
   num_concepts: 6

@@ -18,15 +18,15 @@ def get_args():
         '--dataset',
         type=str,
         # default='CelebA',
-        # default='CUB-200-2011',
+        default='CUB-200-2011',
         # default='PBC',
-        default='7pt',
+        # default='7pt',
         # default='AwA2',
         help='Dataset name')
     parser.add_argument(
         '--labeled_ratio',
         type=float,
-        default=0.1,
+        default=0.05,
         help='The proportion of the labeled data')
 
     # Operation environment

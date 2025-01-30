@@ -26,7 +26,7 @@ class AwA2Dataset(Dataset):
         self.label_transform = label_transform
         self.l_choice = defaultdict(bool)
 
-        each_class_num = math.ceil(labeled_ratio * len(self.data) / N_CLASSES)
+        each_class_num = math.ceil(labeled_ratio * len(self.ds) / N_CLASSES)
         if training:
             random.seed(seed)
             labeled_count = defaultdict(int)

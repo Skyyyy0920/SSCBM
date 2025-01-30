@@ -5,7 +5,7 @@ dataset_config:
   batch_size: 256
 
   # DATASET VARIABLES
-  root_dir: ./data/
+  root_dir: W:\Semi-supervised Concept Bottleneck Models\Datasets\
   sampling_percent: 1
   test_subsampling: 1
   weight_loss: True
