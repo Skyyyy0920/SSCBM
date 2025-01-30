@@ -60,7 +60,7 @@ class AwA2Dataset(Dataset):
             imgs.append(d[0][None, :, :, :])
         imgs_tensor = torch.cat(imgs, dim=0)
         imgs_tensor = imgs_tensor.to(device)
-        num_chunks = 10
+        num_chunks = 32
         chunked_tensors = torch.chunk(imgs_tensor, num_chunks, dim=0)
 
         features = []

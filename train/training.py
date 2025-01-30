@@ -7,7 +7,6 @@ import logging
 import numpy as np
 import pytorch_lightning as pl
 from pytorch_lightning import seed_everything, loggers
-from pytorch_lightning.callbacks.early_stopping import EarlyStopping
 
 import cem.train.utils as utils
 from models.construction import construct_model
@@ -93,8 +92,6 @@ def train_end_to_end_model(
         task_class_weights=None,
         rerun=False,
         logger=False,
-        project_name='',
-        split=0,
         seed=42,
         save_model=True,
         activation_freq=0,
@@ -131,22 +128,11 @@ def train_end_to_end_model(
             logging.info("Load pretrained model")
             model.load_state_dict(torch.load(config.get("model_pretrain_path")), strict=False)
 
-    callbacks = [
-        EarlyStopping(
-            monitor=config["early_stopping_monitor"],
-            min_delta=config.get("early_stopping_delta", 0.00),
-            patience=config['patience'],
-            verbose=config.get("verbose", False),
-            mode=config["early_stopping_mode"],
-        ),
-    ]
-
     trainer = pl.Trainer(
         accelerator=accelerator,
         devices=devices,
         max_epochs=config['max_epochs'],
         check_val_every_n_epoch=config.get("check_val_every_n_epoch", 5),
-        # callbacks=callbacks,
         logger=logger or False,
         enable_checkpointing=enable_checkpointing,
         gradient_clip_val=gradient_clip_val,

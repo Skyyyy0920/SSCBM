@@ -28,6 +28,14 @@ def get_args():
         type=float,
         default=0.05,
         help='The proportion of the labeled data')
+    parser.add_argument(
+        '--image_encoder',
+        type=str,
+        # default='resnet18',
+        default='resnet34',
+        # default='resnet50',
+        # default='densenet121',
+        help='Dataset name')
 
     # Operation environment
     parser.add_argument(

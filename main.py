@@ -61,6 +61,7 @@ if __name__ == '__main__':
         for run_config in generate_hyper_param_configs(trial_config):
             run_config = copy.deepcopy(run_config)
             run_config['result_dir'] = save_dir
+            run_config["c_extractor_arch"] = args.image_encoder
             evaluate_expressions(run_config, soft=True)
 
             old_results = None
@@ -75,9 +76,7 @@ if __name__ == '__main__':
                 train_dl=train_dl,
                 val_dl=val_dl,
                 test_dl=test_dl,
-                split=0,
                 result_dir=save_dir,
-                project_name=args.project_name,
                 seed=args.seed,
                 imbalance=imbalance,
                 old_results=old_results,
