@@ -8,11 +8,11 @@ import sklearn.metrics
 import torch
 
 from pathlib import Path
-from torchvision.models import densenet121
+from torchvision.models import densenet121, resnet50
 
 
 ################################################################################
-## HELPER FUNCTIONS
+# HELPER FUNCTIONS
 ################################################################################
 
 def _save_result(fun, kwargs, output_filepath):
@@ -28,10 +28,7 @@ def execute_and_save(
         filename,
         rerun=False,
 ):
-    output_filepath = os.path.join(
-        result_dir,
-        filename,
-    )
+    output_filepath = os.path.join(result_dir, filename)
     if (not rerun) and os.path.exists(output_filepath):
         return joblib.load(output_filepath)
     context = multiprocessing.get_context('spawn')
@@ -46,9 +43,7 @@ def execute_and_save(
     p.start()
     p.join()
     if p.exitcode:
-        raise ValueError(
-            f'Subprocess failed!'
-        )
+        raise ValueError(f'Subprocess failed!')
     p.kill()
     return joblib.load(output_filepath)
 
@@ -72,17 +67,12 @@ def load_call(
             real_key = key[:len(run_name) + 1]
         else:
             real_key = key
-        rerun = rerun or (
-                os.environ.get(f"RERUN_METRIC_{real_key.upper()}", "0") == "1"
-        )
+        rerun = rerun or (os.environ.get(f"RERUN_METRIC_{real_key.upper()}", "0") == "1")
         if real_key in old_results:
             outputs.append(old_results[real_key])
         else:
             rerun = True
-            logging.debug(
-                f"Restarting run because we could not find {real_key} in "
-                f"old results for {run_name}."
-            )
+            logging.debug(f"Restarting run because we could not find {real_key} in old results for {run_name}.")
             break
     if not rerun:
         return outputs, True
@@ -130,18 +120,14 @@ def compute_bin_accuracy(y_pred, y_true):
     y_true = y_true.reshape(-1).cpu().detach()
     y_accuracy = sklearn.metrics.accuracy_score(y_true, y_pred)
     try:
-        y_auc = sklearn.metrics.roc_auc_score(
-            y_true,
-            y_probs,
-            multi_class='ovo',
-        )
+        y_auc = sklearn.metrics.roc_auc_score(y_true, y_probs, multi_class='ovo')
     except:
         y_auc = 0
     try:
         y_f1 = sklearn.metrics.f1_score(y_true, y_pred, average='macro')
     except:
         y_f1 = 0
-    return (y_accuracy, y_auc, y_f1)
+    return y_accuracy, y_auc, y_f1
 
 
 def compute_accuracy(
@@ -150,10 +136,7 @@ def compute_accuracy(
         binary_output=False,
 ):
     if (len(y_pred.shape) < 2) or (y_pred.shape[-1] == 1) or binary_output:
-        return compute_bin_accuracy(
-            y_pred=y_pred,
-            y_true=y_true,
-        )
+        return compute_bin_accuracy(y_pred=y_pred, y_true=y_true)
     y_probs = torch.nn.Softmax(dim=-1)(y_pred).cpu().detach()
     used_classes = np.unique(y_true.reshape(-1).cpu().detach())
     y_probs = y_probs[:, sorted(list(used_classes))]
@@ -161,15 +144,11 @@ def compute_accuracy(
     y_true = y_true.reshape(-1).cpu().detach()
     y_accuracy = sklearn.metrics.accuracy_score(y_true, y_pred)
     try:
-        y_auc = sklearn.metrics.roc_auc_score(
-            y_true,
-            y_probs,
-            multi_class='ovo',
-        )
+        y_auc = sklearn.metrics.roc_auc_score(y_true, y_probs, multi_class='ovo')
     except:
         y_auc = 0.0
     y_f1 = 0.0
-    return (y_accuracy, y_auc, y_f1)
+    return y_accuracy, y_auc, y_f1
 
 
 def wrap_pretrained_model(c_extractor_arch, pretrain_model=True):
@@ -178,23 +157,20 @@ def wrap_pretrained_model(c_extractor_arch, pretrain_model=True):
             model = c_extractor_arch(pretrained=pretrain_model)
             if output_dim:
                 if c_extractor_arch == densenet121:
-                    model.classifier = torch.nn.Linear(
-                        1024,
-                        output_dim,
-                    )
+                    model.classifier = torch.nn.Linear(1024, output_dim)
+                if c_extractor_arch == resnet50:
+                    model.fc = torch.nn.Linear(2048, output_dim)
                 elif hasattr(model, 'fc'):
                     model.fc = torch.nn.Linear(512, output_dim)
         except:
-            model = c_extractor_arch(
-                output_dim=output_dim,
-            )
+            model = c_extractor_arch(output_dim=output_dim)
         return model
 
     return _result_x2c_fun
 
 
 ################################################################################
-## HELPER CLASSES
+# HELPER CLASSES
 ################################################################################
 
 class EmptyEnter(object):
@@ -243,10 +219,7 @@ class ActivationMonitorWrapper:
             if self.epoch < self.single_frequency_epochs:
                 next_size = 1
             else:
-                next_size = min(
-                    true_max_epochs - self.epoch,
-                    self.activation_freq,
-                )
+                next_size = min(true_max_epochs - self.epoch, self.activation_freq)
             self.trainer.fit_loop.max_epochs = next_size + self.epoch
             self.trainer.fit_loop.current_epoch = self.epoch
             self.trainer.fit(*args, **kwargs)
@@ -255,38 +228,20 @@ class ActivationMonitorWrapper:
 
     def dump_activations(self):
         batch_results = self.trainer.predict(self.model, self.test_dl)
-        out_semantics = np.concatenate(
-            list(map(lambda x: x[0], batch_results)),
-            axis=0,
-        )
-        out_embs = np.concatenate(
-            list(map(lambda x: x[1], batch_results)),
-            axis=0,
-        )
+        out_semantics = np.concatenate(list(map(lambda x: x[0], batch_results)), axis=0)
+        out_embs = np.concatenate(list(map(lambda x: x[1], batch_results)), axis=0)
 
-        out_acts = np.concatenate(
-            list(map(lambda x: x[2], batch_results)),
-            axis=0,
-        )
+        out_acts = np.concatenate(list(map(lambda x: x[2], batch_results)), axis=0)
         np.save(
-            os.path.join(
-                self.output_dir,
-                f'test_embedding_semantics_on_epoch_{self.epoch}.npy',
-            ),
+            os.path.join(self.output_dir, f'test_embedding_semantics_on_epoch_{self.epoch}.npy'),
             out_semantics,
         )
         np.save(
-            os.path.join(
-                self.output_dir,
-                f'test_embedding_vectors_on_epoch_{self.epoch}.npy',
-            ),
+            os.path.join(self.output_dir, f'test_embedding_vectors_on_epoch_{self.epoch}.npy'),
             out_embs,
         )
         np.save(
-            os.path.join(
-                self.output_dir,
-                f'test_model_output_on_epoch_{self.epoch}.npy',
-            ),
+            os.path.join(self.output_dir, f'test_model_output_on_epoch_{self.epoch}.npy'),
             out_acts,
         )
 
@@ -328,9 +283,7 @@ class WrapperModule(pl.LightningModule):
         else:
             # Then we assume the model already outputs a sigmoidal vector
             self.sig = lambda x: x
-            self.acc_sig = (
-                torch.nn.Sigmoid() if self.binary_output else lambda x: x
-            )
+            self.acc_sig = (torch.nn.Sigmoid() if self.binary_output else lambda x: x)
 
     def forward(self, x):
         return self.sig(self.model(x))
@@ -342,10 +295,7 @@ class WrapperModule(pl.LightningModule):
     def _run_step(self, batch, batch_idx, train=False):
         x, y = batch
         y_logits = self(x)
-        loss = self.loss_task(
-            y_logits if y_logits.shape[-1] > 1 else y_logits.reshape(-1),
-            y,
-        )
+        loss = self.loss_task(y_logits if y_logits.shape[-1] > 1 else y_logits.reshape(-1), y)
         # compute accuracy
         (y_accuracy, y_auc, y_f1) = compute_accuracy(
             y_true=y,
