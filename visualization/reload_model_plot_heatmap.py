@@ -138,7 +138,7 @@ def load_evaluate_model(
 
 
 if __name__ == '__main__':
-    pl.seed_everything(20010125)
+    pl.seed_everything()
     logging.info(f"Reload the trained model to plot the heatmap!")
     args = get_args()
     logging_time = time.strftime('%H-%M', time.localtime())
@@ -156,22 +156,8 @@ if __name__ == '__main__':
         data_module = cub_data_module
     elif args.dataset == "CelebA":
         data_module = celeba_data_module
-    elif args.dataset == "MNIST":
-        data_module = mnist_data_module
-    elif args.dataset in ["XOR", "vector", "Dot", "Trigonometric"]:
-        data_module = get_synthetic_data(dataset_config["dataset"])
     else:
         raise ValueError(f"Unsupported dataset {dataset_config['dataset']}!")
-
-    if experiment_config['c_extractor_arch'] == "mnist_extractor":
-        num_operands = dataset_config.get('num_operands', 32)
-        experiment_config["c_extractor_arch"] = mnist_data_module.get_mnist_extractor_arch(
-            input_shape=(dataset_config.get('batch_size', 512), num_operands, 28, 28),
-            num_operands=num_operands,
-        )
-    elif experiment_config['c_extractor_arch'] == 'synth_extractor':
-        input_features = get_synthetic_num_features(dataset_config["dataset"])
-        experiment_config["c_extractor_arch"] = get_synthetic_extractor_arch(input_features)
 
     train_dl, val_dl, test_dl, imbalance, (n_concepts, n_tasks, concept_map) = data_module.generate_data(
         config=dataset_config,
