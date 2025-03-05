@@ -1,5 +1,6 @@
-import math
 import os
+import re
+import math
 import torch
 import random
 import pickle
@@ -721,6 +722,64 @@ class StratifiedSampler(Sampler):
         return len(self.class_vector)
 
 
+class CUBDataset_for_heatmap(Dataset):
+    def __init__(self, pkl_file_paths, image_dir,
+                 root_dir='./data/CUB_200_2011', path_transform=None, transform=None,
+                 concept_transform=None, label_transform=None):
+        self.data = []
+        self.is_train = any(["train" in path for path in pkl_file_paths])
+        if not self.is_train:
+            assert any([("test" in path) or ("val" in path) for path in pkl_file_paths])
+        for file_path in pkl_file_paths:
+            with open(file_path, 'rb') as f:
+                self.data.extend(pickle.load(f))
+        self.transform = transform
+        self.concept_transform = concept_transform
+        self.label_transform = label_transform
+        self.image_dir = image_dir
+        self.root_dir = root_dir
+        self.path_transform = path_transform
+
+    def __len__(self):
+        return len(self.data)
+
+    def __getitem__(self, idx):
+        img_data = self.data[idx]
+        img_id = img_data['id']
+        target = img_id
+        img_path = img_data['img_path']
+        img_path = img_path.replace(
+            '/juice/scr/scr102/scr/thaonguyen/CUB_supervision/datasets/',
+            'G:/Semi-supervised Concept Bottleneck Models/Datasets/CUB_200_2011/'
+        )
+        img = Image.open(img_path).convert('RGB')
+
+        match = re.search(r'CUB_200_2011/images/(.*?).jpg', img_path)
+        if match:
+            intermediate_str = match.group(1)
+            final_str = intermediate_str.split('/')[-1]
+        else:
+            final_str = 'oo'
+
+        transform = transforms.Compose([
+            transforms.CenterCrop(299),
+            transforms.ToTensor(),  # implicitly divides by 255
+        ])
+        img_show = transform(img)
+
+        class_label = img_data['class_label']
+        if self.label_transform:
+            class_label = self.label_transform(class_label)
+        if self.transform:
+            img = self.transform(img)
+
+        attr_label = img_data['attribute_label']
+        if self.concept_transform is not None:
+            attr_label = self.concept_transform(attr_label)
+
+        return img, target, img_id
+
+
 class CUBDataset(Dataset):
     def __init__(self, pkl_file_paths, image_dir, labeled_ratio, training,
                  seed=42, root_dir='../data/CUB200/', path_transform=None, transform=None,
@@ -783,7 +842,7 @@ class CUBDataset(Dataset):
             img_path = img_data['img_path']
             img_path = img_path.replace(
                 '/juice/scr/scr102/scr/thaonguyen/CUB_supervision/datasets/',
-                '/ibex/user/xieh0a/code/sscbm-backup/datasets/'
+                'G:/Semi-supervised Concept Bottleneck Models/Datasets/CUB_200_2011/'
             )
             img = Image.open(img_path).convert('RGB')
             img_tensor = preprocess(img).unsqueeze(0)
@@ -850,7 +909,7 @@ class CUBDataset(Dataset):
         img_path = img_data['img_path']
         img_path = img_path.replace(
             '/juice/scr/scr102/scr/thaonguyen/CUB_supervision/datasets/',
-            '/ibex/user/xieh0a/code/sscbm-backup/datasets/'
+            'G:/Semi-supervised Concept Bottleneck Models/Datasets/CUB_200_2011/'
         )
         img = Image.open(img_path).convert('RGB')
 

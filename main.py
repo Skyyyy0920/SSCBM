@@ -22,7 +22,7 @@ if __name__ == '__main__':
         experiment_config = yaml.load(f, Loader=yaml.FullLoader)
 
     logging.info(f"GPU number: {torch.cuda.device_count()}")
-    logging.info(f"current GPU: {torch.cuda.current_device()}")
+    # logging.info(f"current GPU: {torch.cuda.current_device()}")
 
     # ==================================================================================================
     # 2. Save codes and settings
