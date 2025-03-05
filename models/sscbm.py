@@ -3,7 +3,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 import numpy as np
 import pytorch_lightning as pl
-from torchvision.models import resnet50
+from torchvision.models import resnet50, resnet34
 from models.cbm import CBM_SSL
 import train.utils as utils
 from utils import visualize_and_save_heatmaps
@@ -130,6 +130,106 @@ class Cross_MultiAttention(nn.Module):
         return out, att_weights
 
 
+class FeatureExtractor(nn.Module):
+    """修改ResNet提取器，保留空间特征信息"""
+
+    def __init__(self, output_dim=None):
+        super().__init__()
+        # 加载不带顶层的ResNet
+        resnet = resnet34(pretrained=True)
+        # 移除最后的全局平均池化和全连接层
+        self.features = nn.Sequential(*list(resnet.children())[:-2])
+        self.out_features = 512
+
+    def forward(self, x):
+        # 返回特征图 [B, 2048, H, W] 通常是 [B, 2048, 7, 7]
+        return self.features(x)
+
+
+class SpatialCrossAttention(nn.Module):
+    """空间感知的交叉注意力模块"""
+
+    def __init__(self, embed_dim, feature_channels, use_residual=True):
+        super().__init__()
+        self.embed_dim = embed_dim
+        self.use_residual = use_residual
+        self.num_heads = 4
+        self.head_dim = embed_dim // self.num_heads
+
+        # 投影层
+        self.feature_proj = nn.Conv2d(feature_channels, embed_dim, kernel_size=1)
+        self.concept_query_proj = nn.Linear(embed_dim, embed_dim)
+
+        # 多头注意力
+        self.mh_concept = nn.Linear(embed_dim, self.num_heads * self.head_dim)
+        self.mh_feature = nn.Linear(embed_dim, 2 * self.num_heads * self.head_dim)
+
+        self.layer_norm = nn.LayerNorm(embed_dim)
+
+        # 概念得分预测
+        self.score_proj = nn.Sequential(
+            nn.LayerNorm(embed_dim),
+            nn.Linear(embed_dim, embed_dim * 2),
+            nn.GELU(),
+            nn.Dropout(0.1),
+            nn.Linear(embed_dim * 2, 1),
+            nn.Sigmoid()
+        )
+
+    def forward(self, features, c_embedding):
+        """
+        Args:
+            features: [B, C, H, W] 特征图
+            c_embedding: [B, N, D] 概念嵌入
+        Returns:
+            concept_scores: [B, N] 概念得分
+            concept_maps: [B, N, H, W] 概念激活热图
+        """
+        B, C, H, W = features.shape
+        N = c_embedding.size(1)  # 概念数量
+
+        # 投影特征图
+        feature_proj = self.feature_proj(features)  # [B, D, H, W]
+        feature_proj = feature_proj.flatten(2).permute(0, 2, 1)  # [B, H*W, D]
+
+        # 投影概念查询
+        concept_query = self.concept_query_proj(c_embedding)  # [B, N, D]
+
+        # 多头注意力
+        mh_query = self.mh_concept(concept_query).view(
+            B, N, self.num_heads, self.head_dim).permute(0, 2, 1, 3)  # [B, h, N, d]
+
+        mh_key_value = self.mh_feature(feature_proj)  # [B, H*W, 2*h*d]
+        mh_key, mh_value = mh_key_value.chunk(2, dim=-1)
+        mh_key = mh_key.view(B, H * W, self.num_heads, self.head_dim).permute(0, 2, 1, 3)  # [B, h, H*W, d]
+        mh_value = mh_value.view(B, H * W, self.num_heads, self.head_dim).permute(0, 2, 1, 3)  # [B, h, H*W, d]
+
+        # 计算注意力权重
+        attn_logits = torch.matmul(mh_query, mh_key.transpose(-2, -1))  # [B, h, N, H*W]
+        attn_logits = attn_logits / (self.head_dim ** 0.5)
+        attn_weights = F.softmax(attn_logits, dim=-1)  # [B, h, N, H*W]
+        attn_weights = F.dropout(attn_weights, p=0.1, training=self.training)
+
+        # 这个权重矩阵就是我们需要的热图基础
+        # 把它重新整形为空间特征图
+        concept_maps = attn_weights.mean(dim=1)  # [B, N, H*W]
+        concept_maps = concept_maps.view(B, N, H, W)  # [B, N, H, W]
+
+        # 计算加权特征
+        attended = torch.matmul(attn_weights, mh_value)  # [B, h, N, d]
+        attended = attended.permute(0, 2, 1, 3).contiguous().view(B, N, -1)  # [B, N, D]
+
+        if self.use_residual:
+            attended = attended + c_embedding
+
+        attended = self.layer_norm(attended)
+
+        # 计算概念得分
+        concept_scores = self.score_proj(attended).squeeze(-1)  # [B, N]
+
+        return concept_scores, concept_maps
+
+
 class CrossAttention(nn.Module):
     def __init__(self, embed_dim, image_feature_dim, use_residual=True):
         super().__init__()
@@ -250,7 +350,21 @@ class SSCBM(CBM_SSL):
         self.n_concepts = n_concepts
         self.output_interventions = output_interventions
         self.intervention_policy = intervention_policy
-        self.pre_concept_model = c_extractor_arch(output_dim=None)
+        # self.pre_concept_model = c_extractor_arch(output_dim=None)
+
+        self.pre_concept_model = FeatureExtractor(output_dim=None)
+        self.resnet_out_features = self.pre_concept_model.out_features
+
+        # 添加池化层，用于生成向量表示
+        self.pooling = nn.AdaptiveAvgPool2d(1)
+        self.fc = nn.Linear(512, 1000)
+
+        # 添加空间交叉注意力模块
+        self.spatial_cross_attn = SpatialCrossAttention(
+            embed_dim=emb_size,
+            feature_channels=self.resnet_out_features
+        )
+
         self.training_intervention_prob = training_intervention_prob
         self.output_latent = output_latent
         if self.training_intervention_prob != 0:
@@ -267,7 +381,8 @@ class SSCBM(CBM_SSL):
         self.task_loss_weight = task_loss_weight
         self.shared_prob_gen = shared_prob_gen
         self.top_k_accuracy = top_k_accuracy
-        self.resnet_out_features = list(self.pre_concept_model.modules())[-1].out_features
+        # self.resnet_out_features = list(self.pre_concept_model.modules())[-1].out_features
+        self.resnet_out_features = 1000
 
         self.concept_context_generators = torch.nn.ModuleList()
         self.concept_prob_generators = torch.nn.ModuleList()
@@ -313,7 +428,7 @@ class SSCBM(CBM_SSL):
         else:
             self.c2y_model = c2y_model
 
-        self.cross_attn = CrossAttention(emb_size, self.resnet_out_features)
+        # self.cross_attn = CrossAttention(emb_size, self.resnet_out_features)
 
         self.sigmoid = torch.nn.Sigmoid()
 
@@ -334,8 +449,8 @@ class SSCBM(CBM_SSL):
         self.tau = tau
         self.use_concept_groups = use_concept_groups
 
-        self.fc = nn.Linear(512, self.emb_size)
-        self.pooling = nn.AdaptiveAvgPool2d(1)
+        # self.fc = nn.Linear(512, self.emb_size)
+        # self.pooling = nn.AdaptiveAvgPool2d(1)
 
     def _after_interventions(
             self,
@@ -381,7 +496,19 @@ class SSCBM(CBM_SSL):
             output_interventions=None
     ):
         if latent is None:
-            pre_c = self.pre_concept_model(x)  # [batch_size, 299, 299] -> [batch_size, resnet_out_features]
+            # pre_c = self.pre_concept_model(x)  # [batch_size, 299, 299] -> [batch_size, resnet_out_features]
+            # contexts = []
+            # c_sem = []
+
+            features = self.pre_concept_model(x)  # [batch_size, 2048, H, W]
+
+            # 保存原始特征图尺寸用于插值
+            feat_h, feat_w = features.shape[2], features.shape[3]
+
+            # 应用全局平均池化得到向量表示
+            pooled_features = self.pooling(features).squeeze(-1).squeeze(-1)
+            pooled_features = self.fc(pooled_features)
+
             contexts = []
             c_sem = []
 
@@ -391,7 +518,9 @@ class SSCBM(CBM_SSL):
                     prob_gen = self.concept_prob_generators[0]
                 else:
                     prob_gen = self.concept_prob_generators[i]
-                context = context_gen(pre_c)  # [batch_size, resnet_out_features] -> [batch_size, 2 * emb_size]
+                # context = context_gen(pre_c)  # [batch_size, resnet_out_features] -> [batch_size, 2 * emb_size]
+                context = context_gen(pooled_features)
+
                 prob = prob_gen(context)  # [batch_size, 2 * emb_size] -> [batch_size, 1]
                 contexts.append(torch.unsqueeze(context, dim=1))
                 c_sem.append(self.sigmoid(prob))
@@ -435,7 +564,8 @@ class SSCBM(CBM_SSL):
         y = self.c2y_model(c_pred)
 
         image_feature = self.pre_concept_model(x)  # [batch_size, resnet_out_features]
-        c_pred_unlabeled = self.cross_attn(image_feature, c_embedding)
+        # c_pred_unlabeled = self.cross_attn(image_feature, c_embedding)
+        c_pred_unlabeled, concept_maps = self.spatial_cross_attn(features, c_embedding)
 
         tail_results = []
         if output_interventions:
