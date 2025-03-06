@@ -3,7 +3,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 import numpy as np
 import pytorch_lightning as pl
-from torchvision.models import resnet18, resnet34, resnet50
+from torchvision.models import resnet50
 from models.cbm import CBM_SSL
 import train.utils as utils
 from utils import visualize_and_save_heatmaps
@@ -193,7 +193,7 @@ class SSCBM(CBM_SSL):
         else:
             self.c2y_model = c2y_model
 
-        self.cross_attn = CrossAttention(emb_size, self.resnet_out_features)
+        # self.cross_attn = CrossAttention(emb_size, self.resnet_out_features)
 
         self.sigmoid = torch.nn.Sigmoid()
 
@@ -216,6 +216,21 @@ class SSCBM(CBM_SSL):
 
         self.fc = nn.Linear(512, self.emb_size)
         self.pooling = nn.AdaptiveAvgPool2d(1)
+
+    def unlabeled_image_encoder(self, x):
+        # self.pre_concept_model resnet34
+        x = self.pre_concept_model.conv1(x)
+        x = self.pre_concept_model.bn1(x)
+        x = self.pre_concept_model.relu(x)
+        x = self.pre_concept_model.maxpool(x)
+
+        x = self.pre_concept_model.layer1(x)
+        x = self.pre_concept_model.layer2(x)
+        x = self.pre_concept_model.layer3(x)
+        x = self.pre_concept_model.layer4(x)
+        x = x.transpose(1, 3)
+        x = self.fc(x)
+        return x
 
     def _after_interventions(
             self,
@@ -314,8 +329,20 @@ class SSCBM(CBM_SSL):
         c_pred = c_embedding.view((-1, self.emb_size * self.n_concepts))
         y = self.c2y_model(c_pred)
 
-        image_feature = self.pre_concept_model(x)  # [batch_size, resnet_out_features]
-        c_pred_unlabeled = self.cross_attn(image_feature, c_embedding)
+        # image_feature = self.pre_concept_model(x)  # [batch_size, resnet_out_features]
+        # c_pred_unlabeled = self.cross_attn(image_feature, c_embedding)
+
+        image_feature = self.unlabeled_image_encoder(x)
+
+        # image_feature: [batch_size, H, W, D] (D is concept embedding size)
+        # c_embedding: [batch_size, n_concepts, D]
+        # heatmap: [batch_size, n_concepts, H, W]
+        heatmap = []
+        for i in range(len(image_feature)):
+            heatmap.append(torch.matmul(image_feature[i], c_embedding[i].transpose(0, 1)))
+        heatmap = torch.stack(heatmap).permute(0, 3, 1, 2)
+        c_pred_unlabeled = self.pooling(heatmap).squeeze()
+        c_pred_unlabeled = self.sigmoid(c_pred_unlabeled)
 
         tail_results = []
         if output_interventions:
@@ -445,7 +472,7 @@ class SSCBM(CBM_SSL):
             output_dir='heatmap',
             concept_set=None,
     ):
-        pre_c = self.image_encoder(x)
+        pre_c = self.pre_concept_model(x)
         contexts = []
         c_sem = []
 
@@ -473,8 +500,16 @@ class SSCBM(CBM_SSL):
             heatmap.append(torch.matmul(image_feature[i], c_embedding[i].transpose(0, 1)))
         heatmap = torch.stack(heatmap).permute(0, 3, 1, 2)
 
-        for i in range(len(x)):
-            # save_dir = f"./{output_dir}/{img_name[i]}"
-            save_dir = f"/root/autodl-tmp/heatmap/{img_name[i]}"
+        return heatmap
 
-            visualize_and_save_heatmaps(x_show[i], c[i], c_sem[i], heatmap[i], save_dir, concept_set)
+        # print("heatmap")
+        # print(heatmap.shape)
+        # print(image_feature.shape)
+        # print(c_embedding.shape)
+        # exit(0)
+
+        # for i in range(len(x)):
+        #     # save_dir = f"./{output_dir}/{img_name[i]}"
+        #     save_dir = f"/root/autodl-tmp/heatmap/{img_name[i]}"
+        #
+        #     visualize_and_save_heatmaps(x_show[i], c[i], c_sem[i], heatmap[i], save_dir, concept_set)

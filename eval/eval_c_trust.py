@@ -28,20 +28,23 @@ def evaluate_concept_trustworthiness(all_activation_maps, all_img_ids, bbox_half
     all_activation_maps[i] : (n_select_samples, fea_h, fea_w) for the i-th attribute
     all_img_ids[i] : img_id for the i-th image
     """
+    # 获取设备信息
+    device = all_img_ids.device
+
     # Get the ground-truth attributes of the all test images
     all_attributes = []
     for img_id in all_img_ids:
         attributes = id_to_attributes[img_id.item()]
         all_attributes.append(attributes)
     all_attributes = np.stack(all_attributes, axis=0)
-    all_attributes = torch.from_numpy(all_attributes).cuda()
+    all_attributes = torch.from_numpy(all_attributes).to(device)
     n_attributes = all_attributes.shape[-1]
 
     # Gather the part locs of each image
     all_img_num, part_num = all_img_ids.shape[0], 15
     all_part_locs = np.zeros((all_img_num, part_num, 2)) - 1  # Each element is (gt_y, gt_x)
-    all_img_ids = all_img_ids.cpu().numpy()
-    for idx, img_id in enumerate(all_img_ids):
+    all_img_ids_cpu = all_img_ids.cpu().numpy()
+    for idx, img_id in enumerate(all_img_ids_cpu):
         img_id = img_id.item()
         bbox = id_to_bbox[img_id]
         bbox_x1, bbox_y1, bbox_x2, bbox_y2 = bbox[0], bbox[1], bbox[2], bbox[3]
@@ -53,7 +56,7 @@ def evaluate_concept_trustworthiness(all_activation_maps, all_img_ids, bbox_half
             re_loc_x, re_loc_y = int(img_size * ratio_x), int(img_size * ratio_y)
             all_part_locs[idx, part_id, 0] = re_loc_y
             all_part_locs[idx, part_id, 1] = re_loc_x
-    all_part_locs = torch.from_numpy(all_part_locs).cuda()
+    all_part_locs = torch.from_numpy(all_part_locs).to(device)
 
     # Only evaluate the part attributes
     all_loc_acc, all_attri_idx, all_num_samples = [], [], []
@@ -61,7 +64,7 @@ def evaluate_concept_trustworthiness(all_activation_maps, all_img_ids, bbox_half
         attribute_name = attributes_names[attri_idx]  # The name of current attribute
         if attribute_name not in part_attributes_names:  # Only evaluate the part attributes, eliminate the attributes for the whole body
             continue
-        part_indexes = torch.LongTensor(part_name_to_part_indexes[attribute_name]).cuda()
+        part_indexes = torch.LongTensor(part_name_to_part_indexes[attribute_name]).to(device)
 
         attri_labels = all_attributes[:, attri_idx]
         select_img_indexes = torch.nonzero(attri_labels == 1).squeeze(
@@ -95,6 +98,10 @@ def evaluate_concept_trustworthiness(all_activation_maps, all_img_ids, bbox_half
         sample_exist = part_exist.sum(dim=-1) > 0  # (n_select_samples)
         cal_img_indexes = torch.nonzero(sample_exist == 1).squeeze(
             dim=1)  # The images without part location annotations are eliminated
+
+        # 确保索引和被索引的张量在同一设备上
+        cal_img_indexes = cal_img_indexes.to(part_locs.device)
+
         # n_cal_samples = cal_img_indexes.shape[0]
         cal_pred_bboxes, cal_part_locs, cal_part_exist = pred_bboxes[cal_img_indexes], part_locs[cal_img_indexes], \
                                                          part_exist[
@@ -124,7 +131,8 @@ def evaluate_concept_trustworthiness(all_activation_maps, all_img_ids, bbox_half
     return mean_loc_acc * 100, (all_loc_acc, all_attri_idx, all_num_samples)
 
 
-def generate_attribute_activation_maps(all_concept_acts, all_attributes, all_img_ids, c2a_weight=None, model=None):
+def generate_attribute_activation_maps(all_concept_acts, all_attributes, all_img_ids, c2a_weight=None, model=None,
+                                       device='cuda'):
     """
     为每个属性生成激活图，适用于概念数等于属性数的情况
 
@@ -134,11 +142,27 @@ def generate_attribute_activation_maps(all_concept_acts, all_attributes, all_img
         all_img_ids: 所有样本的图像ID
         c2a_weight: 概念到属性的权重矩阵，如果为None则使用一对一映射
         model: 模型对象，用于获取权重矩阵(如果c2a_weight为None)
+        device: 计算设备 ('cuda' 或 'cpu')
 
     返回:
         all_activation_maps: 每个属性的激活图列表
         其他评估所需的指标
     """
+    # 确保设备名称有效
+    if device == 'gpu':
+        device = 'cuda'
+
+    # 确定所有张量的设备
+    concept_acts_device = all_concept_acts.device
+    attributes_device = all_attributes.device
+
+    # 打印设备信息以帮助调试
+    print(f"概念激活图设备: {concept_acts_device}, 属性标签设备: {attributes_device}")
+
+    # 确保所有张量在同一设备上
+    all_concept_acts = all_concept_acts.to(concept_acts_device)
+    all_attributes = all_attributes.to(concept_acts_device)
+
     n_samples, n_concepts, fea_h, fea_w = all_concept_acts.shape
     n_attributes = all_attributes.shape[1]
 
@@ -187,20 +211,48 @@ def generate_attribute_activation_maps(all_concept_acts, all_attributes, all_img
         attri_labels = all_attributes[:, attri_idx]
         select_img_indexes = torch.nonzero(attri_labels == 1).squeeze(dim=1)
 
+        # 确保索引与all_concept_acts在同一设备上
+        select_img_indexes = select_img_indexes.to(concept_acts_device)
+
         if len(select_img_indexes) == 0:
             # 如果没有样本包含该属性，跳过
-            all_activation_maps.append(torch.zeros(0, fea_h, fea_w))
+            all_activation_maps.append(torch.zeros(0, fea_h, fea_w, device=concept_acts_device))
             continue
 
         if use_one_to_one:
             # 方法1：直接使用对应概念的激活图
-            activation_maps = all_concept_acts[select_img_indexes, attri_idx]  # [n_select_samples, fea_h, fea_w]
+            try:
+                activation_maps = all_concept_acts[select_img_indexes, attri_idx]  # [n_select_samples, fea_h, fea_w]
+            except RuntimeError as e:
+                print(f"错误：{e}")
+                print(
+                    f"设备信息: all_concept_acts: {all_concept_acts.device}, select_img_indexes: {select_img_indexes.device}")
+                # 尝试将索引移到CPU上
+                select_img_indexes_cpu = select_img_indexes.cpu()
+                all_concept_acts_cpu = all_concept_acts.cpu()
+                activation_maps = all_concept_acts_cpu[select_img_indexes_cpu, attri_idx].to(concept_acts_device)
         else:
             # 方法2：选择多个相关概念的激活图并平均
             cur_corre_proto_indexes = corre_proto_indexes[attri_idx]
-            select_proto_acts = all_concept_acts[select_img_indexes][:,
-                                cur_corre_proto_indexes]  # [n_select_samples, corre_proto_num, fea_h, fea_w]
-            activation_maps = select_proto_acts.mean(dim=1)  # [n_select_samples, fea_h, fea_w]
+
+            # 确保索引在正确的设备上
+            cur_corre_proto_indexes = cur_corre_proto_indexes.to(concept_acts_device)
+
+            try:
+                select_proto_acts = all_concept_acts[select_img_indexes][:,
+                                    cur_corre_proto_indexes]  # [n_select_samples, corre_proto_num, fea_h, fea_w]
+                activation_maps = select_proto_acts.mean(dim=1)  # [n_select_samples, fea_h, fea_w]
+            except RuntimeError as e:
+                print(f"错误：{e}")
+                print(
+                    f"设备信息: all_concept_acts: {all_concept_acts.device}, select_img_indexes: {select_img_indexes.device}, cur_corre_proto_indexes: {cur_corre_proto_indexes.device}")
+                # 尝试将所有张量移到CPU上进行索引
+                select_img_indexes_cpu = select_img_indexes.cpu()
+                cur_corre_proto_indexes_cpu = cur_corre_proto_indexes.cpu()
+                all_concept_acts_cpu = all_concept_acts.cpu()
+
+                select_proto_acts = all_concept_acts_cpu[select_img_indexes_cpu][:, cur_corre_proto_indexes_cpu]
+                activation_maps = select_proto_acts.mean(dim=1).to(concept_acts_device)
 
         all_activation_maps.append(activation_maps)
 
@@ -263,7 +315,51 @@ if __name__ == '__main__':
                 root_dir=root_dir,
             )
 
-            loader = DataLoader(dataset, batch_size=256, shuffle=True, drop_last=False, num_workers=64)
+            loader = DataLoader(dataset, batch_size=512, shuffle=True, drop_last=False, num_workers=64)
+
+            all_concept_acts = []
+            all_targets = []
+            all_img_ids = []
+            concept_set = np.array(CONCEPT_SEMANTICS)[SELECTED_CONCEPTS]
+            for b_idx, batch in enumerate(tqdm(loader, desc="heatmap generating")):
+                data, targets, img_ids = batch
+                heat = model.plot_heatmap(data)
+                all_concept_acts.append(heat)
+                all_targets.append(targets)
+                all_img_ids.append(img_ids)
+                break
+            all_concept_acts = torch.cat(all_concept_acts, dim=0)  # [n_samples, n_concepts, fea_h, fea_w]
+            all_targets = torch.cat(all_targets, dim=0)
+            all_img_ids = torch.cat(all_img_ids, dim=0)
+
+            print("finish generating")
+
+            all_attributes = []
+            for img_id in all_img_ids:
+                attributes = id_to_attributes[img_id.item()]
+                all_attributes.append(attributes)
+            all_attributes = np.stack(all_attributes, axis=0)
+            all_attributes = torch.from_numpy(all_attributes).cuda()
+            n_attributes = all_attributes.shape[-1]
+
+            print("finish attributes")
+
+            all_activation_maps = generate_attribute_activation_maps(
+                all_concept_acts, all_attributes, all_img_ids, model=model)
+
+            print("finish generating maps")
+
+            mean_loc_acc, (all_loc_acc, all_attri_idx, all_num_samples) = evaluate_concept_trustworthiness(
+                all_activation_maps,
+                all_img_ids,
+                bbox_half_size=45)
+            attributes_names = np.array(attributes_names)
+            select_attribute_names = attributes_names[all_attri_idx]
+
+            np.set_printoptions(precision=2)
+            print('Mean Loc Accuracy : %.2f' % (mean_loc_acc))
+
+            exit(0)
 
             activation_generator = CBMActivationMapGenerator(model)
 
