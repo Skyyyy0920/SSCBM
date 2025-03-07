@@ -10,87 +10,6 @@ from utils import visualize_and_save_heatmaps
 from cem.metrics.accs import compute_accuracy
 
 
-class CrossAttention(nn.Module):
-    def __init__(self, embed_dim, image_feature_dim, use_residual=True):
-        super().__init__()
-        self.embed_dim = embed_dim
-        self.use_residual = use_residual
-        self.num_heads = 4
-        self.head_dim = embed_dim // self.num_heads
-
-        self.image_proj = nn.Linear(image_feature_dim, embed_dim)
-        self.concept_query_proj = nn.Linear(embed_dim, embed_dim)
-
-        self.mh_concept = nn.Linear(embed_dim, self.num_heads * self.head_dim)
-        self.mh_image = nn.Linear(embed_dim, 2 * self.num_heads * self.head_dim)
-
-        self.res_gate = nn.Linear(embed_dim, embed_dim) if use_residual else None
-
-        self.layer_norm = nn.LayerNorm(embed_dim)
-
-        self.score_proj = nn.Sequential(
-            nn.LayerNorm(embed_dim),
-            nn.Linear(embed_dim, embed_dim * 2),
-            nn.GELU(),
-            nn.Dropout(0.1),
-            nn.Linear(embed_dim * 2, 1),
-            nn.Sigmoid()
-        )
-
-        self._init_weights()
-
-    def _init_weights(self):
-        nn.init.xavier_uniform_(self.image_proj.weight)
-        nn.init.zeros_(self.image_proj.bias)
-
-        nn.init.xavier_uniform_(self.concept_query_proj.weight)
-        nn.init.zeros_(self.concept_query_proj.bias)
-
-        nn.init.normal_(self.mh_concept.weight, std=0.02)
-        nn.init.normal_(self.mh_image.weight, std=0.02)
-
-        if self.res_gate:
-            nn.init.constant_(self.res_gate.weight, 0.)
-            nn.init.constant_(self.res_gate.bias, 1.)
-
-    def forward(self, image_feature, c_embedding):
-        B, _ = image_feature.shape  # [B, image_feature_dim]
-        N = c_embedding.size(1)  # [B, N, D]
-
-        image_feature = self.image_proj(image_feature)  # [B, D]
-        image_feature = image_feature.unsqueeze(1)  # [B, 1, D]
-
-        concept_query = self.concept_query_proj(c_embedding)  # [B, N, D]
-
-        mh_query = self.mh_concept(concept_query).view(
-            B, N, self.num_heads, self.head_dim).permute(0, 2, 1, 3)  # [B, h, N, d]
-
-        mh_key_value = self.mh_image(image_feature)  # [B, 1, 2*h*d]
-        mh_key, mh_value = mh_key_value.chunk(2, dim=-1)
-        mh_key = mh_key.view(B, 1, self.num_heads, self.head_dim).permute(0, 2, 1, 3)  # [B, h, 1, d]
-        mh_value = mh_value.view(B, 1, self.num_heads, self.head_dim).permute(0, 2, 1, 3)  # [B, h, 1, d]
-
-        attn_logits = torch.matmul(mh_query, mh_key.transpose(-2, -1))  # [B, h, N, 1]
-        attn_logits = attn_logits / (self.head_dim ** 0.5)
-        attn_weights = F.softmax(attn_logits, dim=-1)
-        attn_weights = F.dropout(attn_weights, p=0.1, training=self.training)
-
-        attended = torch.matmul(attn_weights, mh_value)  # [B, h, N, d]
-        attended = attended.permute(0, 2, 1, 3).contiguous().view(B, N, -1)  # [B, N, D]
-
-        if self.use_residual:
-            gate = torch.sigmoid(self.res_gate(attended))
-            attended = gate * attended + (1 - gate) * c_embedding
-        else:
-            attended = attended + c_embedding
-
-        attended = self.layer_norm(attended)
-
-        concept_scores = self.score_proj(attended).squeeze(-1)  # [B, N]
-
-        return concept_scores
-
-
 class SSCBM(CBM_SSL):
     def __init__(
             self,
@@ -192,8 +111,6 @@ class SSCBM(CBM_SSL):
             self.c2y_model = torch.nn.Sequential(*layers)
         else:
             self.c2y_model = c2y_model
-
-        # self.cross_attn = CrossAttention(emb_size, self.resnet_out_features)
 
         self.sigmoid = torch.nn.Sigmoid()
 
