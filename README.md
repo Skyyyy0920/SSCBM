@@ -2,6 +2,18 @@
 
 This is the code implementation for our paper [Semi-supervised Concept Bottleneck Models](https://arxiv.org/abs/2406.18992)
 
+## Cite our work
+```
+@InProceedings{Hu_2025_ICCV,
+    author    = {Hu, Lijie and Huang, Tianhao and Xie, Huanyi and Gong, Xilin and Ren, Chenyang and Hu, Zhengyu and Yu, Lu and Ma, Ping and Wang, Di},
+    title     = {Semi-supervised Concept Bottleneck Models},
+    booktitle = {Proceedings of the IEEE/CVF International Conference on Computer Vision (ICCV)},
+    month     = {October},
+    year      = {2025},
+    pages     = {2110-2119}
+}
+```
+
 
 ## Dataset Preparation
 
